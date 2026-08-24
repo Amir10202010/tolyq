@@ -196,6 +196,22 @@ suite('market.js — обучение модели интенсивности', 
     assert(info.exposureH > 0);
   });
 
+  test('обучение чистое: одинаковые данные и момент дают одинаковую модель', () => {
+    // Глобального состояния в модуле нет, поэтому результат не должен
+    // зависеть ни от порядка вызовов, ни от стенных часов.
+    const now = new Date('2026-08-25T00:00:00Z');
+    const ds = [dataset('AST', 'ALA', 3, 'pure')];
+    const a = trainIntensityModel(ds, { now });
+    const b = trainIntensityModel(ds, { now });
+    equal(JSON.stringify(a), JSON.stringify(b), 'два обучения на одних данных разошлись');
+  });
+
+  test('момент обучения инъектируется, а не берётся из часов', () => {
+    const now = new Date('2026-01-02T03:04:05Z');
+    const m = trainIntensityModel([dataset('AST', 'ALA', 2, 'ts')], { now });
+    equal(getModelInfo(m).trainedAt, now.toISOString());
+  });
+
   test('обучение по умолчанию использует объявленную силу усадки', () => {
     equal(trainIntensityModel([dataset('AST', 'ALA', 2, 'm17')]).alpha, SHRINKAGE_ALPHA);
   });

@@ -475,19 +475,24 @@ const TRAINING_CORRIDORS = [
   ['ALA', 'KHG'], ['ALA', 'DOS'],
 ];
 
-let cachedModel = null;
-
 /**
  * Обучает модель интенсивности на сгенерированной истории.
- * Результат кэшируется: обучение занимает десятки миллисекунд, а UI
- * может спросить сводку на каждой перерисовке.
  *
- * @param {Object} [opts] { weeks, seed, force }
+ * Функция ЧИСТАЯ и результат не кэширует. Модуль без глобального
+ * состояния тестируется изолированно и не зависит от порядка вызовов;
+ * кэш на уровне модуля это свойство ломает, а стоит обучение около
+ * двух миллисекунд. Если интерфейсу нужно чаще — пусть держит модель
+ * у себя, это его решение, а не наше.
+ *
+ * @param {Object} [opts] { weeks, seed, now }
  */
 export function getIntensityModel(opts = {}) {
-  if (cachedModel && !opts.force) return cachedModel;
-  cachedModel = trainOnSimulatedHistory(TRAINING_CORRIDORS, opts.weeks ?? 4, opts.seed ?? 'tolyq-train');
-  return cachedModel;
+  return trainOnSimulatedHistory(
+    TRAINING_CORRIDORS,
+    opts.weeks ?? 4,
+    opts.seed ?? 'tolyq-train',
+    opts
+  );
 }
 
 /** Сводка об обученной модели для интерфейса: наблюдения, плечи, правдоподобие. */

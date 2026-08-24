@@ -518,6 +518,10 @@ export function hourOfWeek(t, startHourOfWeek = 8) {
  *          startHourOfWeek?:number }
  * @param {Object} [opts]
  * @param {number} [opts.alpha] сила усадки к среднему по плечу
+ * @param {Date}   [opts.now]   момент обучения; по умолчанию стенные часы.
+ *        Вынесен в параметр, чтобы функция оставалась чистой: без этого
+ *        два обучения на одних данных давали бы разный результат, и
+ *        воспроизводимость демо переставала быть полной.
  * @returns {Object} обученная модель
  */
 export function trainIntensityModel(datasets = [], opts = {}) {
@@ -585,7 +589,7 @@ export function trainIntensityModel(datasets = [], opts = {}) {
     observations: totalObservations,
     exposureH: totalExposure,
     logLikelihood: logLik,
-    trainedAt: new Date().toISOString(),
+    trainedAt: (opts.now || new Date()).toISOString(),
   };
 }
 
@@ -640,7 +644,7 @@ export function getModelInfo(model) {
  * Используется интерфейсом на старте, чтобы показать «модель обучена
  * на N наблюдениях», и тестами для проверки сходимости.
  */
-export function trainOnSimulatedHistory(corridorPairs, weeks = 4, seed = 'train') {
+export function trainOnSimulatedHistory(corridorPairs, weeks = 4, seed = 'train', opts = {}) {
   const horizonH = weeks * HOURS_PER_WEEK;
   const datasets = corridorPairs.map(([from, to]) => ({
     corridor: `${from}-${to}`,
@@ -650,7 +654,7 @@ export function trainOnSimulatedHistory(corridorPairs, weeks = 4, seed = 'train'
     startHourOfWeek: 8,
     arrivals: simulateArrivals({ from, to }, horizonH, `${seed}:${from}-${to}`),
   }));
-  return trainIntensityModel(datasets);
+  return trainIntensityModel(datasets, opts);
 }
 
 /**
