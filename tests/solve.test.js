@@ -1,8 +1,35 @@
 // Тесты оркестрации: форма ответа по контракту, вырожденные входы, бюджет времени.
 import { suite, test, assert, equal, close, lessOrEqual, greaterOrEqual } from './harness.js';
-import { solve } from '../src/core/solve.js';
+import { solve, runMonth } from '../src/core/solve.js';
+import * as engine from '../src/core/solve.js';
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+suite('solve.js — поверхность публичного API', () => {
+  test('движок отдаёт наружу ровно то, что перечислено в types.js', () => {
+    // Контракт говорит «больше UI ничего о нём не знает»: напарник
+    // импортирует только из solve.js. Если какой-то из этих вызовов
+    // не реэкспортирован, интерфейс получит undefined и упадёт в рантайме
+    // там, где никто не ждёт, — тест ловит это на сборке, а не на защите.
+    for (const name of ['solve', 'simulateArrivals', 'computeStopping', 'runMonth', 'getNetwork']) {
+      equal(typeof engine[name], 'function', `solve.js не отдаёт ${name}()`);
+    }
+  });
+
+  test('реэкспортированные вызовы работают через solve.js', () => {
+    const arrivals = engine.simulateArrivals({ from: 'AST', to: 'ALA' }, 48, 'api');
+    assert(Array.isArray(arrivals), 'simulateArrivals должен вернуть массив');
+
+    const policy = engine.computeStopping({ from: 'AST', to: 'ALA', tons: 8, volumeM3: 20, deadlineH: 96 }, 'api');
+    assert(Array.isArray(policy.thresholdByHour), 'computeStopping должен вернуть политику');
+
+    const net = engine.getNetwork();
+    assert(net.nodes.length === 12 && net.edges.length > 0, 'getNetwork должен вернуть граф');
+
+    const month = engine.runMonth('AST', 'ALA', 'api');
+    equal(month.dailyTrucksAvoided.length, 30, 'runMonth должен вернуть 30 дней');
+  });
+});
 
 suite('solve.js — контракт ответа', () => {
   test('ответ содержит все поля Solution', () => {
@@ -48,7 +75,7 @@ suite('solve.js — контракт ответа', () => {
     assert(s.truckBaseline.legs.every((l) => l.mode === 'road'), 'в базе затесалась ЖД');
   });
 
-  test('политика и упаковка отдаются в форме контракта даже на слое 1', () => {
+  test('политика и упаковка отдаются в форме контракта', () => {
     const s = solve({ from: 'AST', to: 'ALA', tons: 8, deadlineH: 96 });
     assert(Array.isArray(s.stopping.thresholdByHour));
     for (const k of ['expectedValueKzt', 'dispatchAtH', 'probability', 'horizonH']) {
@@ -110,6 +137,84 @@ suite('solve.js — вырожденные входы', () => {
     const s = solve({ from: 'AST', to: 'ALA', tons: 200, volumeM3: 400, deadlineH: 200 });
     assert(s.recommended, 'тяжёлая партия должна получить маршрут');
     assert(s.recommended.costKzt > 0);
+  });
+});
+
+suite('solve.js — прогон месяца', () => {
+  test('MonthSummary содержит все поля контракта', () => {
+    const m = runMonth('AST', 'ALA', 'm');
+    for (const k of ['shipments', 'trucksAvoided', 'co2SavedKg', 'kztSaved', 'avgFillPct', 'dailyTrucksAvoided']) {
+      assert(k in m, `в сводке нет поля ${k}`);
+    }
+    equal(m.dailyTrucksAvoided.length, 30, 'график должен быть на 30 дней');
+    for (const v of m.dailyTrucksAvoided) {
+      assert(Number.isFinite(v) && v >= 0, 'в графике отрицательное или нечисло');
+    }
+  });
+
+  test('итог по дням сходится с общим числом убранных фур', () => {
+    const m = runMonth('AST', 'ALA', 'sum');
+    const daily = m.dailyTrucksAvoided.reduce((a, b) => a + b, 0);
+    equal(daily, m.trucksAvoided, 'сумма по дням не равна итогу');
+  });
+
+  test('политика реально применяется: отправки идут не по календарю', () => {
+    // Если бы вагоны собирались посуточно, часы отправки были бы
+    // кратны 24 или шли ровно раз в день. Политика даёт нерегулярную
+    // картину — именно это и отличает прогон от группировки по датам.
+    const m = runMonth('AST', 'ALA', 'policy');
+    greaterOrEqual(m.wagons, 2, 'за месяц должно собраться несколько вагонов');
+    const gaps = new Set();
+    for (let i = 1; i < m.dispatchHours.length; i++) {
+      gaps.add(m.dispatchHours[i] - m.dispatchHours[i - 1]);
+    }
+    greaterOrEqual(gaps.size, 3, 'интервалы между отправками одинаковы — политика не участвует');
+  });
+
+  test('экономия и убранные фуры неотрицательны', () => {
+    for (const [a, b] of [['AST', 'ALA'], ['AST', 'KGF'], ['ATX', 'SCO'], ['SHY', 'DMB']]) {
+      const m = runMonth(a, b, 'neg');
+      greaterOrEqual(m.trucksAvoided, 0, `${a}→${b}: отрицательное число фур`);
+      greaterOrEqual(m.co2SavedKg, 0, `${a}→${b}: отрицательная экономия CO₂`);
+      greaterOrEqual(m.avgFillPct, 0, `${a}→${b}: отрицательная загрузка`);
+      lessOrEqual(m.avgFillPct, 100, `${a}→${b}: загрузка выше 100 %`);
+    }
+  });
+
+  test('убрано фур не больше, чем было отправлений', () => {
+    const m = runMonth('AST', 'ALA', 'cap');
+    lessOrEqual(m.wagons, m.shipments, 'вагонов больше, чем заявок');
+  });
+
+  test('загруженный коридор даёт больший эффект, чем тихий', () => {
+    // AST–KGF задано в сети как 7.0 заявок в сутки, ATX–SCO как 2.0
+    const busy = runMonth('AST', 'KGF', 'cmp');
+    const quiet = runMonth('ATX', 'SCO', 'cmp');
+    greaterOrEqual(busy.shipments, quiet.shipments, 'на плотном плече заявок должно быть больше');
+  });
+
+  test('прогон воспроизводим при одном seed', () => {
+    equal(JSON.stringify(runMonth('AST', 'ALA', 'same')), JSON.stringify(runMonth('AST', 'ALA', 'same')));
+  });
+
+  test('коридор без ЖД отдаёт валидный нулевой результат', () => {
+    const m = runMonth('AST', 'НЕТУ', 'none');
+    equal(m.trucksAvoided, 0);
+    equal(m.dailyTrucksAvoided.length, 30);
+    assert(Number.isFinite(m.kztSaved));
+  });
+
+  test('число дней настраивается', () => {
+    const m = runMonth('AST', 'ALA', 'd', { days: 7 });
+    equal(m.days, 7);
+    equal(m.dailyTrucksAvoided.length, 7);
+  });
+
+  test('прогон месяца укладывается в 200 мс', () => {
+    const t0 = now();
+    runMonth('AST', 'ALA', 'perf');
+    const ms = now() - t0;
+    lessOrEqual(ms, 200, `прогон занял ${ms.toFixed(0)} мс`);
   });
 });
 

@@ -31,7 +31,14 @@ import {
   effectiveWagonCapacityT,
 } from './network.js';
 
+// ---------------------------------------------------------------------
+//  ПУБЛИЧНЫЙ API ЦЕЛИКОМ — ровно то, что перечислено в types.js.
+//  Интерфейс импортирует только отсюда и о внутренних модулях не знает,
+//  поэтому реэкспорт обязателен: без него UI получил бы undefined.
+// ---------------------------------------------------------------------
 export { getNetwork } from './network.js';
+export { simulateArrivals } from './market.js';
+export { computeStopping } from './stopping.js';
 
 // ---------------------------------------------------------------------
 //  НОРМАЛИЗАЦИЯ ЗАЯВКИ
@@ -282,21 +289,28 @@ export function solve(rawRequest) {
 //  Что было бы, если бы политику применяли ВСЕ отправители на плече,
 //  а не один. Это ответ на вопрос «а какой эффект в масштабе».
 //
-//  Считаем честно и по дням:
+//  Считаем честно, по непрерывному потоку и по найденной политике:
 //    БЕЗ TOLYQ — каждый отправитель берёт свою фуру (или несколько,
 //                если партия не влезает). Так возят сегодня.
-//    С TOLYQ   — заявки дня консолидируются в вагоны отжигом; кто не
-//                поместился ни в один вагон, всё равно едет фурой.
+//    С TOLYQ   — заявки копятся, и в КАЖДЫЙ час политика решает,
+//                отправлять вагон или ждать ещё; что поедет из
+//                накопленного, выбирает отжиг.
 //  Разница по машинам, деньгам и выбросам — и есть эффект.
 //
 //  Никаких коэффициентов «внедрение даёт 30 % экономии»: всё, что
 //  показывается, получено этим прогоном.
 // =====================================================================
 
-/** Сколько вагонов подряд пытаемся собрать за день, прежде чем сдаться. */
-const MAX_WAGONS_PER_DAY = 6;
-
 /**
+ * Прогон месяца с ПРИМЕНЕНИЕМ ПОЛИТИКИ.
+ *
+ * Политику считаем один раз для коридора, дальше идём по непрерывному
+ * потоку заявок час за часом и в каждый час спрашиваем у неё то же самое,
+ * что спросил бы отдельный отправитель: отправлять накопленное или ждать.
+ * Это принципиально отличается от «сгруппировать заявки суток пачкой»:
+ * там консолидация происходит по календарю, а не по решению — и весь
+ * смысл задачи об остановке из прогона исчезает.
+ *
  * @param {string} fromId
  * @param {string} toId
  * @param {number|string} [seed]
@@ -305,7 +319,10 @@ const MAX_WAGONS_PER_DAY = 6;
  */
 export function runMonth(fromId, toId, seed = 'tolyq', opts = {}) {
   const days = Math.max(1, Math.min(365, opts.days ?? 30));
-  const probe = { from: fromId, to: toId, tons: 8, volumeM3: 8 * M3_PER_TON, cargoType: 'general', deadlineH: 240 };
+  const probe = {
+    from: fromId, to: toId, tons: 8, volumeM3: 8 * M3_PER_TON,
+    cargoType: 'general', deadlineH: 240, seed,
+  };
 
   // Параметры плеча берём из фронта: те же цифры, что видит пользователь.
   const { pareto, dominated } = paretoRoutes(fromId, toId, probe);
@@ -316,83 +333,113 @@ export function runMonth(fromId, toId, seed = 'tolyq', opts = {}) {
   const empty = {
     shipments: 0, trucksAvoided: 0, co2SavedKg: 0, kztSaved: 0,
     avgFillPct: 0, dailyTrucksAvoided: new Array(days).fill(0),
-    days, corridor: `${fromId}-${toId}`, wagons: 0,
+    days, corridor: `${fromId}-${toId}`, wagons: 0, dispatchHours: [],
   };
   // Нет железнодорожного варианта — консолидировать не во что.
   if (!rail) return empty;
 
   const railKm = rail.legs.reduce((s, l) => s + l.km, 0);
   const wagonCost = rail.costSoloKzt;
-  // Автомобильная альтернатива на том же плече; если дорог нет, сравнивать
-  // не с чем и экономия по определению нулевая.
+  // Автомобильная альтернатива на том же плече; без дорог сравнивать не с чем.
   const truckKm = road ? road.legs.reduce((s, l) => s + l.km, 0) : 0;
   const truckCost = road ? road.costKzt / trucksNeeded(probe.tons, probe.volumeM3) : 0;
 
-  let shipments = 0;
+  // ПОЛИТИКА. Считается один раз: плечо и распределение прихода за месяц
+  // не меняются, а пересчитывать её на каждый вагон — 30 лишних решений MDP.
+  const policy = computeStopping(probe, `${seed}:policy`, {
+    railWagonCostKzt: wagonCost,
+    railHours: rail.hours,
+    truckCostKzt: road ? road.costKzt : undefined,
+    mcRuns: 0, // вероятность здесь не нужна, только пороги
+  });
+  const horizon = policy.degenerate ? 0 : policy.horizonH;
+  const thresholds = policy.thresholdByHour;
+
+  const totalH = days * 24;
+  const arrivals = simulateArrivals(probe, totalH, `${seed}:month`);
+
+  let shipments = arrivals.length;
   let trucksAvoided = 0;
   let co2Saved = 0;
   let kztSaved = 0;
   let fillSum = 0;
   let wagons = 0;
-  const dailyTrucksAvoided = [];
+  const dailyTrucksAvoided = new Array(days).fill(0);
+  const dispatchHours = [];
 
-  for (let d = 0; d < days; d++) {
-    const arrivals = simulateArrivals(probe, 24, `${seed}:month:${d}`);
-    shipments += arrivals.length;
+  // Заявки, ждущие своего вагона. Открытый вагон — те, что уже накоплены.
+  let pending = [];
+  let openedAtH = null;
+  let idx = 0;
 
-    if (arrivals.length === 0) {
-      dailyTrucksAvoided.push(0);
-      continue;
+  /**
+   * Отправка: из накопленного отжигом выбираем, что реально поедет,
+   * остальное возвращается в очередь и ждёт следующего вагона.
+   */
+  const dispatch = (atH) => {
+    if (pending.length === 0) return;
+
+    const res = packing(pending, null, `${seed}:w${wagons}`);
+    const goes = res.accepted;
+
+    // Вагон с одной заявкой — тот же одиночный рейс, только по ЖД:
+    // экономии от консолидации нет, и записывать её в эффект нельзя.
+    if (goes.length < 2) {
+      const a = pending[0];
+      const n = trucksNeeded(a.tons, a.volumeM3);
+      pending = pending.slice(1);
+      openedAtH = pending.length ? openedAtH : null;
+      // Уехал фурой — ни экономии, ни потерь относительно «как сегодня»
+      void n;
+      return;
     }
 
-    // Как везут сегодня: каждому своя машина.
+    const tons = goes.reduce((s, a) => s + a.tons, 0);
+
+    // Как было бы без TOLYQ: каждому своя машина.
     let trucksBefore = 0;
     let co2Before = 0;
     let kztBefore = 0;
-    for (const a of arrivals) {
+    for (const a of goes) {
       const n = trucksNeeded(a.tons, a.volumeM3);
       trucksBefore += n;
       co2Before += truckCo2Kg(truckKm, a.tons, a.volumeM3);
       kztBefore += truckCost * n;
     }
 
-    // Как везли бы с TOLYQ: собираем вагоны, пока есть кого собирать.
-    let pool = arrivals;
-    let co2After = 0;
-    let kztAfter = 0;
-    let trucksAfter = 0;
-    let dayWagons = 0;
+    trucksAvoided += trucksBefore;
+    co2Saved += co2Before - railCo2Kg(railKm, tons);
+    kztSaved += kztBefore - wagonCost;
+    fillSum += res.fillPct;
+    wagons++;
+    dispatchHours.push(Math.round(atH));
 
-    for (let w = 0; w < MAX_WAGONS_PER_DAY && pool.length > 0; w++) {
-      const res = packing(pool, null, `${seed}:m${d}:w${w}`);
-      // Вагон, в который набралось меньше двух заявок, экономии не даёт:
-      // одна партия в вагоне — это тот же одиночный рейс, только по ЖД.
-      if (res.accepted.length < 2) break;
+    const day = Math.min(days - 1, Math.floor(atH / 24));
+    dailyTrucksAvoided[day] += trucksBefore;
 
-      dayWagons++;
-      const tons = res.accepted.reduce((s, a) => s + a.tons, 0);
-      co2After += railCo2Kg(railKm, tons);
-      kztAfter += wagonCost;
-      fillSum += res.fillPct;
+    const taken = new Set(goes.map((a) => `${a.shipper}|${a.atH}`));
+    pending = pending.filter((a) => !taken.has(`${a.shipper}|${a.atH}`));
+    openedAtH = pending.length ? openedAtH : null;
+  };
 
-      const taken = new Set(res.accepted.map((a) => a.shipper + '|' + a.atH));
-      pool = pool.filter((a) => !taken.has(a.shipper + '|' + a.atH));
+  for (let t = 0; t <= totalH; t++) {
+    while (idx < arrivals.length && arrivals[idx].atH <= t) {
+      const a = arrivals[idx++];
+      if (pending.length === 0) openedAtH = t;
+      pending.push(a);
     }
+    if (pending.length === 0) continue;
 
-    // Остаток едет фурами, как и раньше.
-    for (const a of pool) {
-      const n = trucksNeeded(a.tons, a.volumeM3);
-      trucksAfter += n;
-      co2After += truckCo2Kg(truckKm, a.tons, a.volumeM3);
-      kztAfter += truckCost * n;
-    }
+    // Тот же вопрос, что задаёт себе отдельный отправитель, и тот же
+    // ответ: сравниваем накопленное с порогом ЭТОГО часа ожидания.
+    const waited = t - openedAtH;
+    const tons = pending.reduce((s, a) => s + a.tons, 0);
+    const qState = Math.round(tons / 2) * 2;
 
-    const avoided = trucksBefore - trucksAfter;
-    trucksAvoided += avoided;
-    co2Saved += co2Before - co2After;
-    kztSaved += kztBefore - kztAfter;
-    wagons += dayWagons;
-    dailyTrucksAvoided.push(avoided);
+    const forced = horizon <= 0 || waited >= horizon || t >= totalH;
+    const threshold = thresholds[Math.min(waited, thresholds.length - 1)];
+
+    if (forced || qState >= threshold) dispatch(t);
   }
 
   return {
@@ -405,6 +452,9 @@ export function runMonth(fromId, toId, seed = 'tolyq', opts = {}) {
     days,
     corridor: `${fromId}-${toId}`,
     wagons,
+    // Диагностика: в какие часы политика отправляла вагоны
+    dispatchHours,
+    policyHorizonH: horizon,
   };
 }
 
