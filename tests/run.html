@@ -35,7 +35,7 @@
     out.appendChild(el);
   };
 
-  const res = run(write);
+  const res = await run(write);
 
   const s = document.getElementById('summary');
   s.className = res.failed === 0 ? 'ok' : 'bad';

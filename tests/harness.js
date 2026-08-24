@@ -83,10 +83,15 @@ function fmt(v) {
 
 /**
  * Прогоняет всё объявленное. Печатает отчёт через переданный write().
+ *
+ * Асинхронная: тело теста может вернуть промис, и мы его дождёмся.
+ * Это нужно слою LLM — его функции async даже на оффлайн-пути, и без
+ * ожидания упавший промис молча уходил бы в никуда, а тест «проходил».
+ *
  * @param {(line:string, kind?:string)=>void} write
- * @returns {{passed:number, failed:number, ms:number}}
+ * @returns {Promise<{passed:number, failed:number, ms:number}>}
  */
-export function run(write = (l) => console.log(l)) {
+export async function run(write = (l) => console.log(l)) {
   let passed = 0;
   let failed = 0;
   const t0 = now();
@@ -96,7 +101,7 @@ export function run(write = (l) => console.log(l)) {
     for (const t of s.tests) {
       const tt = now();
       try {
-        t.fn();
+        await t.fn();
         const ms = now() - tt;
         passed++;
         write(`  ✓ ${t.name}${ms > 20 ? ` (${ms.toFixed(0)} мс)` : ''}`, 'pass');

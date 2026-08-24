@@ -4,6 +4,11 @@ import './random.test.js';
 import './network.test.js';
 import './co2.test.js';
 import './pareto.test.js';
+import './market.test.js';
+import './model.test.js';
+import './stopping.test.js';
+import './packing.test.js';
+import './explain.test.js';
 import './solve.test.js';
 
 export { run } from './harness.js';

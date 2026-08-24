@@ -26,7 +26,8 @@ import {
   WAGON_CAP_T,
   WAGON_CAP_M3,
   MIN_WAGON_SHARE,
-  ASSUMED_WAGON_FILL_T,
+  MARKET_M3_PER_TON,
+  assumedWagonFillT,
 } from './network.js';
 import { legCo2Kg, trucksNeeded, transshipCo2Kg } from './co2.js';
 
@@ -71,10 +72,11 @@ export function wagonsNeeded(tons, volumeM3 = 0) {
  * @param {number} assumedFillT на какую загрузку вагона рассчитываем
  * @returns {number} множитель к тарифу за рейс вагона
  */
-export function wagonShare(tons, volumeM3, assumedFillT = ASSUMED_WAGON_FILL_T) {
+export function wagonShare(tons, volumeM3, assumedFillT = null) {
   const units = wagonsNeeded(tons, volumeM3);
   if (units > 1) return units; // свои вагоны, делить не с кем
-  const fill = Math.max(1, Math.min(assumedFillT, WAGON_CAP_T));
+  const target = assumedFillT ?? assumedWagonFillT(tons, volumeM3);
+  const fill = Math.max(1, Math.min(target, WAGON_CAP_T));
   return Math.max(MIN_WAGON_SHARE, Math.min(1, tons / fill));
 }
 
@@ -101,7 +103,11 @@ function legFill(mode, ctx) {
   if (units > 1) {
     return Math.max(ctx.tons / (WAGON_CAP_T * units), ctx.volumeM3 / (WAGON_CAP_M3 * units));
   }
-  return Math.min(1, ctx.assumedFillT / WAGON_CAP_T);
+  // Вагон считается загруженным по тому ресурсу, который кончился первым.
+  // Лёгкий груз выбирает кубатуру задолго до тоннажа: 18 т при 6.5 м³/т
+  // это 27 % по массе и 100 % по объёму, и честная цифра — вторая.
+  const volAtFill = ctx.assumedFillT * MARKET_M3_PER_TON;
+  return Math.min(1, Math.max(ctx.assumedFillT / WAGON_CAP_T, volAtFill / WAGON_CAP_M3));
 }
 
 // ---------------------------------------------------------------------
@@ -230,7 +236,7 @@ function materialize(label, ctx) {
 export function paretoRoutes(fromId, toId, request = {}, opts = {}) {
   const tons = Math.max(0, request.tons || 0);
   const volumeM3 = Math.max(0, request.volumeM3 || 0);
-  const assumedFillT = request.assumedWagonFillT || ASSUMED_WAGON_FILL_T;
+  const assumedFillT = request.assumedWagonFillT || assumedWagonFillT(tons, volumeM3);
   const deadlineH = opts.ignoreDeadline ? null : request.deadlineH ?? null;
 
   const ctx = {
