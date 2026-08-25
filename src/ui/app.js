@@ -87,6 +87,79 @@ const form = createForm(document.getElementById('form'), {
 });
 
 // ---------------------------------------------------------------------
+//  РАЗДЕЛЫ
+//  Три вопроса, на которые отвечает система, разведены по вкладкам:
+//  вываливать всё сразу на одну простыню — и есть та каша, из-за которой
+//  непонятно, что где. Вердикт при этом закреплён над вкладками и виден
+//  всегда: переключаются доказательства, а не ответ.
+//
+//  Адреса вида #/route — обычные ссылки: работает «назад» и адрес можно
+//  переслать. Полноценные отдельные страницы потребовали бы перезагрузки
+//  и обнуляли бы анимацию сборки на каждом переходе.
+// ---------------------------------------------------------------------
+const VIEWS = ['route', 'timing', 'impact'];
+
+function currentView() {
+  const h = location.hash.replace(/^#\/?/, '').trim();
+  return VIEWS.includes(h) ? h : VIEWS[0];
+}
+
+function applyView() {
+  const v = currentView();
+
+  for (const s of document.querySelectorAll('.view')) {
+    s.classList.toggle('is-active', s.dataset.view === v);
+  }
+  for (const a of document.querySelectorAll('.nav__tab')) {
+    if (a.dataset.view === v) a.setAttribute('aria-current', 'page');
+    else a.removeAttribute('aria-current');
+  }
+
+  // Ушли со сцены сборки — останавливаем часы, чтобы вагон не уехал
+  // за кадром и человек не вернулся к уже закончившейся анимации.
+  if (v !== 'timing' && clock.running) clockPause();
+
+  // Лента маршрута и разбор словами относятся к разделу «Чем везти».
+  // На других вкладках они только отталкивают содержимое за экран,
+  // поэтому там от вердикта остаётся сам ответ и экономия.
+  el('verdict').classList.toggle('verdict--compact', v !== 'route');
+
+  refreshView(v);
+}
+
+/**
+ * Скрытый график имеет нулевую ширину и потому не рисуется. При показе
+ * раздела просим его модули перерисоваться — но БЕЗ сброса: часы демо
+ * продолжают показывать тот же час, что и до ухода.
+ */
+function refreshView(v) {
+  if (!state.solution) return;
+  if (v === 'route') {
+    pareto.update(state.solution, state.request);
+    map.update(engine.getNetwork(), state.request);
+    map.showRoute(state.hovered || state.solution.recommended);
+  } else if (v === 'timing') {
+    loadbar.refresh();
+    stopping.refresh();
+  } else if (v === 'impact') {
+    summary.update(state.month);
+  }
+}
+
+window.addEventListener('hashchange', applyView);
+
+// ---------------------------------------------------------------------
+//  Заявка на узком экране: свёрнута в строку, разворачивается кнопкой
+// ---------------------------------------------------------------------
+const aside = el('aside');
+const asideToggle = el('aside-toggle');
+asideToggle.addEventListener('click', () => {
+  const open = aside.classList.toggle('is-open');
+  asideToggle.setAttribute('aria-expanded', String(open));
+  asideToggle.textContent = open ? 'Свернуть' : 'Изменить';
+});
+
+// ---------------------------------------------------------------------
 //  Пересчёт
 // ---------------------------------------------------------------------
 function recompute(request) {
@@ -114,6 +187,12 @@ function recompute(request) {
   el('loadbar-meta').textContent = `вагон ${fmt.tons(state.demo.capacityTons)}`;
   el('stopping-meta').textContent = `горизонт ${fmt.hoursShort(state.demo.horizonH)}`;
   el('month-meta').textContent = `загрузка ${fmt.pct(state.month.avgFillPct)}`;
+
+  el('aside-summary').textContent = [
+    `${fmt.tons(request.tons, request.tons % 1 ? 1 : 0)} ${engine.CARGO_TYPES[request.cargoType].toLowerCase()}`,
+    `${nameOf(request.from)} → ${nameOf(request.to)}`,
+    fmt.hoursShort(request.deadlineH),
+  ].join(' · ');
 
   clockReset();
 }
@@ -444,4 +523,5 @@ function esc(s) {
 //  Первый расчёт — последней строкой модуля, чтобы всё выше было объявлено
 // ---------------------------------------------------------------------
 recompute(state.request);
+applyView();
 renderModelNote();

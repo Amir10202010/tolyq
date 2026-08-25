@@ -18,8 +18,12 @@
 </head>
 <body>
 
-<a class="skip" href="#options">Перейти к вариантам доставки</a>
+<a class="skip" href="#main">Перейти к содержимому</a>
 
+<!-- ================================================================
+     ШАПКА. Марка слева, вкладки по трём вопросам системы справа.
+     Вкладки — обычные ссылки: работает «назад» и адрес можно переслать.
+     ================================================================ -->
 <header class="topbar">
   <div class="brand">
     <svg class="brand__mark" viewBox="0 0 32 32" aria-hidden="true">
@@ -30,28 +34,33 @@
     </svg>
     <span class="brand__name">TOLYQ</span>
   </div>
-  <p class="topbar__note">Чем, как и когда везти груз по Казахстану</p>
+
+  <nav class="nav" id="nav" aria-label="Разделы">
+    <a class="nav__tab" href="#/route"  data-view="route">
+      <span class="nav__num">1</span>Чем везти</a>
+    <a class="nav__tab" href="#/timing" data-view="timing">
+      <span class="nav__num">2</span>Когда отправлять</a>
+    <a class="nav__tab" href="#/impact" data-view="impact">
+      <span class="nav__num">3</span>Эффект за месяц</a>
+  </nav>
 </header>
 
-<main class="page">
+<div class="shell">
 
   <!-- ==============================================================
-       РЕШЕНИЕ. Первое, что видит человек, — готовый ответ, а не поля
-       для ввода. Всё остальное на странице объясняет этот блок.
+       ЗАЯВКА — постоянная панель управления слева.
+       На телефоне сворачивается в одну строку с кнопкой «Изменить».
        ============================================================== -->
-  <section class="verdict" id="verdict" aria-live="polite" aria-label="Рекомендация"></section>
+  <aside class="aside" id="aside">
+    <div class="aside__bar">
+      <div class="aside__sum">
+        <span class="aside__sum-k">Заявка</span>
+        <span class="aside__sum-v" id="aside-summary">—</span>
+      </div>
+      <button class="btn btn--ghost btn--sm" type="button" id="aside-toggle" aria-expanded="false" aria-controls="aside-body">Изменить</button>
+    </div>
 
-  <!-- ==============================================================
-       ЗАЯВКА И ВАРИАНТЫ
-       ============================================================== -->
-  <div class="row row--three" id="options">
-
-    <section class="card card--form">
-      <header class="card__head">
-        <h2 class="card__title">Ваша заявка</h2>
-        <p class="card__sub">Меняйте что угодно — ответ пересчитается сразу</p>
-      </header>
-
+    <div class="aside__body" id="aside-body">
       <form class="form" id="form" autocomplete="off">
         <!-- Свободный ввод. Разбирает explain.js → parseRequest().
              Не разобрал — просто ничего не происходит. -->
@@ -127,74 +136,96 @@
 
         <button class="btn btn--ghost btn--block" type="button" id="f-reset">Вернуть демо-сценарий</button>
       </form>
-    </section>
+    </div>
+  </aside>
 
-    <section class="card card--pareto">
-      <header class="card__head">
-        <h2 class="card__title">Варианты доставки</h2>
-        <p class="card__sub">Каждая точка — способ довезти груз. Ниже и левее — лучше</p>
-        <span class="badge badge--muted" id="pareto-meta"></span>
-      </header>
-      <div class="card__chart">
-        <div class="chart" id="pareto-chart"></div>
-        <div class="tip" id="pareto-tip" hidden></div>
+  <main class="main" id="main">
+
+    <!-- ============================================================
+         РЕШЕНИЕ. Закреплено над вкладками: ответ не должен исчезать
+         при переключении разделов.
+         ============================================================ -->
+    <section class="verdict" id="verdict" aria-live="polite" aria-label="Рекомендация"></section>
+
+    <!-- ============================================================
+         1. ЧЕМ ВЕЗТИ
+         Парето и карта стоят рядом намеренно: наведение на точку
+         подсвечивает её маршрут, врозь связка бессмысленна.
+         ============================================================ -->
+    <section class="view" data-view="route" aria-label="Чем везти">
+      <div class="row row--two">
+        <section class="card card--pareto">
+          <header class="card__head">
+            <h2 class="card__title">Варианты доставки</h2>
+            <p class="card__sub">Каждая точка — способ довезти груз. Ниже и левее — лучше</p>
+            <span class="badge badge--muted" id="pareto-meta"></span>
+          </header>
+          <div class="card__chart">
+            <div class="chart" id="pareto-chart"></div>
+            <div class="tip" id="pareto-tip" hidden></div>
+          </div>
+          <footer class="card__foot">
+            Вправо — дольше, вверх — дороже, крупнее точка — больше выбросов.
+            Наведите на точку: увидите её маршрут на карте справа.
+          </footer>
+        </section>
+
+        <section class="card card--network">
+          <header class="card__head">
+            <h2 class="card__title">Маршрут на сети</h2>
+            <p class="card__sub" id="network-sub">Транспортная сеть Казахстана целиком</p>
+            <span class="badge badge--muted" id="network-meta"></span>
+          </header>
+          <div class="card__chart">
+            <div class="chart" id="network-chart"></div>
+          </div>
+          <footer class="card__foot" id="network-note"></footer>
+        </section>
       </div>
-      <footer class="card__foot">
-        Вправо — дольше, вверх — дороже, крупнее точка — больше выбросов.
-        Наведите на точку: увидите её маршрут на карте справа.
-      </footer>
     </section>
 
-    <section class="card card--network">
-      <header class="card__head">
-        <h2 class="card__title">Маршрут на сети</h2>
-        <p class="card__sub" id="network-sub">Транспортная сеть Казахстана целиком</p>
-        <span class="badge badge--muted" id="network-meta"></span>
-      </header>
-      <div class="card__chart">
-        <div class="chart chart--flat" id="network-chart"></div>
+    <!-- ============================================================
+         2. КОГДА ОТПРАВЛЯТЬ
+         ============================================================ -->
+    <section class="view" data-view="timing" aria-label="Когда отправлять">
+      <div class="row row--two">
+        <section class="card card--load" id="loadbar">
+          <header class="card__head">
+            <h2 class="card__title">Сборка вагона</h2>
+            <p class="card__sub">Пока вы ждёте, к грузу подсаживаются попутные партии</p>
+            <span class="badge badge--muted" id="loadbar-meta"></span>
+          </header>
+          <div class="card__body" id="loadbar-body"></div>
+        </section>
+
+        <section class="card card--stop" id="stopping">
+          <header class="card__head">
+            <h2 class="card__title">Порог отправки</h2>
+            <p class="card__sub">Ждать попутный груз или ехать сейчас</p>
+            <span class="badge badge--muted" id="stopping-meta"></span>
+          </header>
+          <div class="card__body" id="stopping-body"></div>
+          <footer class="card__foot model-note" id="model-note"></footer>
+        </section>
       </div>
-      <footer class="card__foot" id="network-note"></footer>
-    </section>
-  </div>
-
-  <!-- ==============================================================
-       КОГДА ОТПРАВЛЯТЬ
-       ============================================================== -->
-  <div class="row row--two">
-    <section class="card card--load" id="loadbar">
-      <header class="card__head">
-        <h2 class="card__title">Сборка вагона</h2>
-        <p class="card__sub">Пока вы ждёте, к грузу подсаживаются попутные партии</p>
-        <span class="badge badge--muted" id="loadbar-meta"></span>
-      </header>
-      <div class="card__body" id="loadbar-body"></div>
     </section>
 
-    <section class="card card--stop" id="stopping">
-      <header class="card__head">
-        <h2 class="card__title">Когда отправлять</h2>
-        <p class="card__sub">Ждать попутный груз или ехать сейчас</p>
-        <span class="badge badge--muted" id="stopping-meta"></span>
-      </header>
-      <div class="card__body" id="stopping-body"></div>
-      <footer class="card__foot model-note" id="model-note"></footer>
+    <!-- ============================================================
+         3. ЭФФЕКТ ЗА МЕСЯЦ
+         ============================================================ -->
+    <section class="view" data-view="impact" aria-label="Эффект за месяц">
+      <section class="card card--month">
+        <header class="card__head">
+          <h2 class="card__title">Что это даёт за месяц</h2>
+          <p class="card__sub">Тридцать дней работы коридора по той же логике</p>
+          <span class="badge badge--muted" id="month-meta"></span>
+        </header>
+        <div class="card__body" id="month-body"></div>
+      </section>
     </section>
-  </div>
 
-  <!-- ==============================================================
-       ЭФФЕКТ ЗА МЕСЯЦ
-       ============================================================== -->
-  <section class="card card--month">
-    <header class="card__head">
-      <h2 class="card__title">Что это даёт за месяц</h2>
-      <p class="card__sub">Тридцать дней работы коридора по той же логике</p>
-      <span class="badge badge--muted" id="month-meta"></span>
-    </header>
-    <div class="card__body" id="month-body"></div>
-  </section>
-
-</main>
+  </main>
+</div>
 
 <footer class="footer">
   <span>TOLYQ</span>

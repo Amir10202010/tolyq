@@ -40,7 +40,21 @@ export function createLoadbar(root, { controls }) {
   });
   ro.observe(root);
 
-  return { update, tick, reset };
+  return { update, tick, reset, refresh };
+
+  /**
+   * Раздел показали заново. Пока он был скрыт, ширина была нулевой и
+   * силуэт не рисовался — пересобираем его и восстанавливаем груз на
+   * тот же час. Сброса тут быть не должно: часы демо не трогаем.
+   */
+  function refresh() {
+    if (!ctx || !dom) return;
+    const w = root.clientWidth;
+    if (!w) return;
+    lastWidth = w;
+    drawWagon(ctx.demo.capacityTons);
+    replay();
+  }
 
   // ------------------------------------------------------------------
 

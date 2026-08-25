@@ -21,6 +21,7 @@ export function createStopping(root, {} = {}) {
   let ctx = null;
   let dom = null;
   let frame = null;
+  let lastClock = { h: 0 };
 
   const ro = new ResizeObserver(() => {
     if (frame) return;
@@ -28,7 +29,7 @@ export function createStopping(root, {} = {}) {
   });
   ro.observe(root);
 
-  return { update, tick, reset: () => tick({ h: 0 }) };
+  return { update, tick, refresh: build, reset: () => tick({ h: 0 }) };
 
   // ------------------------------------------------------------------
 
@@ -118,12 +119,15 @@ export function createStopping(root, {} = {}) {
       now: root.querySelector('[data-role="now"]'),
       X, Y, H, cap,
     };
-    tick({ h: 0 });
+    // не сбрасываем в ноль: при возврате в раздел точка обязана остаться
+    // там же, где была, иначе она разъедется с полосой загрузки
+    tick(lastClock);
   }
 
   // ------------------------------------------------------------------
 
   function tick(clock) {
+    lastClock = clock;
     if (!ctx || !dom) return;
     const { demo } = ctx;
     const h = Math.min(clock.h, dom.H);

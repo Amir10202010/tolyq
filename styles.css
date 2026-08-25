@@ -115,9 +115,47 @@ button, input, select, textarea { font: inherit; color: inherit; letter-spacing:
 
 /* ---------------------------------------------------------------- Шапка */
 .topbar {
-  display: flex; align-items: center; gap: 16px;
-  padding: 18px clamp(16px, 3vw, 34px);
+  position: sticky; top: 0; z-index: 40;
+  display: flex; align-items: center; gap: clamp(14px, 3vw, 34px);
+  padding: 0 clamp(14px, 3vw, 34px);
+  min-height: 56px;
+  background: rgba(10, 10, 10, .86);
+  backdrop-filter: saturate(150%) blur(12px);
   border-bottom: 1px solid var(--border);
+}
+
+/* Вкладки — обычные ссылки на #/…: работает «назад», адрес пересылается */
+.nav {
+  display: flex; align-items: stretch; gap: 2px;
+  margin-left: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.nav::-webkit-scrollbar { display: none; }
+
+.nav__tab {
+  display: inline-flex; align-items: center; gap: 9px;
+  padding: 0 14px; min-height: 56px;
+  color: var(--fg-3); text-decoration: none;
+  font-size: 14px; font-weight: 500; white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  transition: color .14s ease, border-color .14s ease;
+}
+.nav__tab:hover { color: var(--fg-2); }
+.nav__tab[aria-current="page"] { color: var(--fg); border-bottom-color: var(--good); }
+
+/* Номер шага: разделы — это последовательность решения, а не набор ссылок */
+.nav__num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; flex: none;
+  border-radius: 50%;
+  background: var(--surface-2); border: 1px solid var(--border-2);
+  font-family: var(--mono); font-size: 11px; font-weight: 500;
+  color: var(--fg-3);
+  transition: background .14s ease, color .14s ease, border-color .14s ease;
+}
+.nav__tab[aria-current="page"] .nav__num {
+  background: var(--good-soft); border-color: transparent; color: var(--good);
 }
 
 .brand { display: flex; align-items: center; gap: 9px; }
@@ -127,30 +165,64 @@ button, input, select, textarea { font: inherit; color: inherit; letter-spacing:
 }
 .topbar__note { color: var(--fg-3); font-size: 14px; }
 
-/* ---------------------------------------------------------------- Страница */
-.page {
-  max-width: 1500px;
+/* ------------------------------------------------------- Оболочка страницы */
+.shell {
+  max-width: 1560px;
   margin: 0 auto;
-  padding: clamp(18px, 2.6vw, 30px) clamp(16px, 3vw, 34px) 48px;
+  padding: clamp(14px, 2.2vw, 26px) clamp(14px, 3vw, 34px) 44px;
   display: grid;
   gap: var(--gap);
 }
 
-.row { display: grid; gap: var(--gap); }
-
-@media (min-width: 900px) {
-  .row--two   { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .row--three { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .row--three > .card--form { grid-column: 1 / -1; }
+@media (min-width: 1000px) {
+  .shell { grid-template-columns: 320px minmax(0, 1fr); align-items: start; }
 }
 
-@media (min-width: 1240px) {
-  /* Фронт Парето — главный график страницы, поэтому колонка под него
-     шире карты: точки не должны слипаться. */
-  .row--three {
-    grid-template-columns: 310px minmax(0, 1.14fr) minmax(0, 0.86fr);
-  }
-  .row--three > .card--form { grid-column: auto; }
+.main { display: grid; gap: var(--gap); min-width: 0; }
+
+/* Показан ровно один раздел. Переключает роутер в app.js. */
+.view { display: none; }
+.view.is-active { display: block; }
+
+.row { display: grid; gap: var(--gap); }
+@media (min-width: 1180px) {
+  .row--two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ------------------------------------------------------- Заявка сбоку */
+.aside {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  min-width: 0;
+}
+
+@media (min-width: 1000px) {
+  /* Панель остаётся на виду при прокрутке: заявку правят из любого раздела */
+  .aside { position: sticky; top: calc(56px + clamp(14px, 2.2vw, 26px)); }
+}
+
+.aside__bar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.aside__sum { display: grid; gap: 1px; min-width: 0; }
+.aside__sum-k { font-size: 12px; color: var(--fg-3); }
+.aside__sum-v {
+  font-size: 13.5px; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.aside__body { display: block; }
+
+/* На широком экране панель всегда раскрыта, кнопка не нужна */
+@media (min-width: 1000px) {
+  #aside-toggle { display: none; }
+}
+@media (max-width: 999px) {
+  .aside__body { display: none; }
+  .aside.is-open .aside__body { display: block; }
 }
 
 /* ---------------------------------------------------------------- Карточка */
@@ -285,6 +357,12 @@ button, input, select, textarea { font: inherit; color: inherit; letter-spacing:
 }
 .saving--flat .saving__value { color: var(--fg-2); }
 .saving__chips { display: flex; flex-wrap: wrap; gap: 7px; }
+
+/* На вкладках «Когда отправлять» и «Эффект» от вердикта остаётся только
+   сам ответ: лента и разбор там лишь отталкивают содержимое за экран. */
+.verdict--compact .route,
+.verdict--compact .why { display: none; }
+.verdict--compact .verdict__top { padding-bottom: 22px; }
 
 /* Лента маршрута — плечи читаются слева направо, как расписание */
 .route {
@@ -524,6 +602,7 @@ button, input, select, textarea { font: inherit; color: inherit; letter-spacing:
 }
 .btn--ghost:hover { border-color: #3E3E45; color: var(--fg); background: var(--surface-2); }
 .btn--block { width: 100%; }
+.btn--sm { padding: 6px 12px; font-size: 13px; }
 
 /* ---------------------------------------------------------------- Графики */
 .chart { position: relative; width: 100%; }
@@ -797,8 +876,19 @@ button, input, select, textarea { font: inherit; color: inherit; letter-spacing:
   :root { --pad: 16px; --gap: 14px; }
 
   body { font-size: 14.5px; }
-  .topbar { flex-wrap: wrap; gap: 4px 14px; padding: 14px 16px; }
-  .topbar__note { flex-basis: 100%; font-size: 13px; }
+  /* Вкладки уходят на свою строку и теряют номера — иначе три названия
+     не помещаются в 375 px и последнее приходится искать прокруткой. */
+  .topbar { flex-wrap: wrap; gap: 0 12px; padding: 0 14px; min-height: 0; }
+  .brand { min-height: 48px; }
+  .nav { width: 100%; margin-left: 0; border-top: 1px solid var(--border); }
+  .nav__num { display: none; }
+  .nav__tab { flex: 1; justify-content: center; padding: 0 8px; min-height: 46px; font-size: 13px; }
+
+  /* Сводка заявки переносится, а не обрезается: пункт назначения важнее
+     ровной строки. */
+  .aside__sum-v { white-space: normal; }
+  .aside__bar { align-items: flex-start; }
+  #aside-toggle { flex: none; }
 
   .field-row--three { grid-template-columns: 1fr 1fr; }
   .field-row--three > .field:last-child { grid-column: 1 / -1; }
