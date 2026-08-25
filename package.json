@@ -1,0 +1,11 @@
+{
+  "name": "tolyq",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TOLYQ — система принятия решений для грузоотправителей Казахстана",
+  "type": "module",
+  "scripts": {
+    "test": "node tests/run.js",
+    "serve": "python3 tools/serve.py"
+  }
+}

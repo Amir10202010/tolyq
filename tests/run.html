@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>TOLYQ — тесты движка</title>
+<style>
+  body { background:#12141a; color:#d6dae3; font:13px/1.55 ui-monospace,Consolas,monospace; margin:0; padding:24px; }
+  h1 { font-size:15px; font-weight:600; color:#fff; margin:0 0 16px; letter-spacing:.02em; }
+  #out { white-space:pre-wrap; }
+  .suite { color:#7fb2ff; font-weight:600; }
+  .pass  { color:#59d38a; }
+  .fail  { color:#ff6b6b; }
+  #summary { margin-top:18px; padding:10px 14px; border-radius:6px; font-weight:600; }
+  #summary.ok  { background:#12331f; color:#7ee2a8; }
+  #summary.bad { background:#3a1618; color:#ff8f8f; }
+</style>
+<h1>TOLYQ — тесты расчётного ядра</h1>
+<div id="out">запуск…</div>
+<div id="summary"></div>
+<script type="module">
+  // Раннер для браузера: python3 -m http.server 8000
+  // затем http://localhost:8000/tests/run.html
+  //
+  // Импорт динамический и с меткой времени: браузер кэширует ES-модули
+  // агрессивно, и без этого после правки исходника раннер молча показывает
+  // результаты старого кода. За ночь разработки это стоило бы дороже,
+  // чем один лишний параметр в URL.
+  const { run } = await import(`./all.js?t=${Date.now()}`);
+
+  const out = document.getElementById('out');
+  out.textContent = '';
+
+  const write = (line, kind) => {
+    const el = document.createElement('div');
+    if (kind) el.className = kind;
+    el.textContent = line;
+    out.appendChild(el);
+  };
+
+  const res = await run(write);
+
+  const s = document.getElementById('summary');
+  s.className = res.failed === 0 ? 'ok' : 'bad';
+  s.textContent =
+    res.failed === 0
+      ? `ВСЁ ЗЕЛЁНОЕ — ${res.passed} тестов за ${res.ms.toFixed(0)} мс`
+      : `ПАДЕНИЙ: ${res.failed} из ${res.passed + res.failed}`;
+
+  // Для автоматической проверки снаружи
+  window.__TOLYQ_TESTS__ = res;
+</script>

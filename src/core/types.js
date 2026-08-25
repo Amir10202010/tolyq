@@ -11,7 +11,7 @@ export const NODES = [
   { id: 'AST', name: 'Астана',    lat: 51.13, lon: 71.43, rail: true,  road: true,  hub: true  },
   { id: 'ALA', name: 'Алматы',    lat: 43.24, lon: 76.89, rail: true,  road: true,  hub: true  },
   { id: 'SHY', name: 'Шымкент',   lat: 42.32, lon: 69.59, rail: true,  road: true,  hub: true  },
-  { id: 'KGF', name: 'Караганда', lat: 49.80, lon: 73.10, rail: true,  road: true,  hub: false },
+  { id: 'KGF', name: 'Караганда', lat: 49.80, lon: 73.10, rail: true,  road: true,  hub: true },
   { id: 'AKX', name: 'Актобе',    lat: 50.28, lon: 57.17, rail: true,  road: true,  hub: false },
   { id: 'ATX', name: 'Атырау',    lat: 47.09, lon: 51.92, rail: true,  road: true,  hub: false },
   { id: 'KSN', name: 'Костанай',  lat: 53.21, lon: 63.62, rail: true,  road: true,  hub: false },
