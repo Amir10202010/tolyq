@@ -288,11 +288,13 @@ function recompute(request) {
 
     // «Неулучшаемый» — слово из теории Парето, а не из речи грузоотправителя.
     const considered = sol.considered ?? (sol.pareto.length + sol.dominated.length);
-    // «Из чего стоит выбирать» теперь говорит короткий список под графиком,
-    // и подзаголовку осталась его собственная работа — прочесть оси.
+    // Оси подписаны на самом графике — пересказывать их в подзаголовке
+    // значит занимать три строки над картинкой тем, что и так написано
+    // под ней. Здесь остаётся единственное, чего на графике не прочесть:
+    // сколько вариантов пришлось перебрать, чтобы он получился.
     el('pareto-meta').textContent =
-      `Перебрали ${considered} ${fmt.plural(considered, 'вариант', 'варианта', 'вариантов')}. ` +
-      `По горизонтали срок, по вертикали деньги`;
+      `Перебрали ${considered} ${fmt.plural(considered, 'вариант', 'варианта', 'вариантов')} — ` +
+      `на графике те, из которых стоит выбирать`;
     el('loadbar-meta').textContent = `вагон ${fmt.tons(state.demo.capacityTons)}`;
     el('stopping-meta').textContent = `горизонт ${fmt.hoursShort(state.demo.horizonH)}`;
     el('month-meta').textContent = `загрузка ${fmt.pct(state.month.avgFillPct)}`;

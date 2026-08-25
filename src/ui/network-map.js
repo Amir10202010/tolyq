@@ -25,13 +25,17 @@
 // =====================================================================
 
 import * as fmt from './format.js';
-import { KZ_OUTLINE, KZ_LAKES } from './kz-geo.js';
+import { KZ_OUTLINE, KZ_LAKES, KZ_CASPIAN } from './kz-geo.js';
 
 // Поля вокруг карты оставляют место подписям городов по краям. На узком
 // экране поля ужимаются, а те подписи, которым места не хватило, снимает
 // раскладчик ниже.
-const PAD_Y = 30;
-const padX = w => Math.min(60, Math.max(24, w * 0.1));
+const PAD_Y = 26;
+// Поля отданы подписям по краям — Актау на западе, Достык на востоке.
+// Десятая доля ширины была щедростью не по средствам: страна и без того
+// упирается в ширину колонки, а лишние пятнадцать пикселей полей стоили
+// ей полутора десятков пикселей высоты.
+const padX = w => Math.min(46, Math.max(20, w * 0.075));
 const OFFSET = 2.2;            // разведение параллельных рёбер, px
 const R_NODE = 3.6;
 const R_HUB  = 5.0;
@@ -100,10 +104,41 @@ export function createNetworkMap(root, { onNodeHover } = {}) {
 
     const parts = [];
 
-    // --- подложка: страна и озёра ---------------------------------------
+    // --- подложка: море, страна, озёра -----------------------------------
     //  Идёт первой и потому лежит под всем остальным. Никаких событий на
     //  ней нет: это фон, а не объект, с которым человек работает.
-    parts.push(`<path class="kz-land" d="${ringPath(KZ_OUTLINE, at)}"/>`);
+    //
+    //  Порядок обязателен: сначала море (оно уходит за левый край кадра),
+    //  затем ореол вдоль границы, затем суша поверх них. Ореол — широкий
+    //  полупрозрачный штрих ПОД заливкой: видна остаётся только его
+    //  наружная половина, и страна получает мягкую отмывку по контуру,
+    //  как на бумажной карте. Один тонкий штрих поверх заливки такого не
+    //  даёт: он либо теряется, либо превращается в жирную обводку.
+    //  Море гасится к западу. Каспий замкнут далеко за кадром, и его
+    //  замыкающие отрезки — прямые; сплошная заливка превращала бы их в
+    //  видимый угол и всё пятно — в голубой прямоугольник, наклеенный на
+    //  карту. С растушёвкой берег остаётся чётким, а вода растворяется в
+    //  бумаге задолго до края панели: ни одного прямого шва не видно.
+    const seaRight = Math.max(...KZ_CASPIAN.map(([lo, la]) => at(lo, la).x));
+    const landPath = ringPath(KZ_OUTLINE, at);
+    //  Цвет и прозрачность у стопов заданы КЛАССАМИ, а не атрибутами:
+    //  var(--sea) внутри атрибута stop-color не раскрывается — переменные
+    //  живут только в значениях свойств CSS, — и градиент молча уезжал
+    //  в чёрный. Саму заливку тоже назначает CSS: правило стиля бьёт
+    //  презентационный атрибут fill, и fill="url(…)" на элементе просто
+    //  не доживал до отрисовки.
+    parts.push(`<defs>
+      <linearGradient id="tolyq-sea" gradientUnits="userSpaceOnUse"
+                      x1="0" y1="0" x2="${seaRight.toFixed(1)}" y2="0">
+        <stop class="kz-sea__far"  offset="0"/>
+        <stop class="kz-sea__dim"  offset="0.45"/>
+        <stop class="kz-sea__mid"  offset="0.75"/>
+        <stop class="kz-sea__near" offset="1"/>
+      </linearGradient>
+    </defs>`);
+    parts.push(`<path class="kz-sea" d="${ringPath(KZ_CASPIAN, at)}"/>`);
+    parts.push(`<path class="kz-halo" d="${landPath}"/>`);
+    parts.push(`<path class="kz-land" d="${landPath}"/>`);
     for (const lake of KZ_LAKES) {
       parts.push(`<path class="kz-water" d="${ringPath(lake, at)}"/>`);
     }
@@ -312,7 +347,7 @@ function project(width) {
   const pad = padX(width);
   const innerW = Math.max(80, width - pad * 2);
   const scale = innerW / BOX.spanX;
-  const height = Math.round(Math.min(430, Math.max(220, BOX.spanY * scale + PAD_Y * 2)));
+  const height = Math.round(Math.min(460, Math.max(220, BOX.spanY * scale + PAD_Y * 2)));
   const innerH = height - PAD_Y * 2;
   const s = Math.min(scale, innerH / BOX.spanY);
 

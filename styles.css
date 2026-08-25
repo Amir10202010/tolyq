@@ -68,9 +68,11 @@
      темнее бумаги, вода — единственное холодное пятно в палитре, берег
      и граница — обычная линейка. Если подложку видно раньше маршрута,
      значения у неё стало больше, чем у ответа. */
-  --land:   #F3F2EE;
-  --water:  #E7EDF1;
-  --coast:  var(--rule-3);
+  --land:   #F1EFE9;
+  --water:  #DCE7EE;
+  --sea:    #E3EBF1;              /* Каспий: чуть светлее озёр — он за кадром */
+  --coast:  #A8A69C;              /* граница: своя линия, а не служебная линейка */
+  --coast-halo: #CFCCC1;          /* мягкий след наружу от границы */
 
   /* --- Виды транспорта --------------------------------------------------
      Железная дорога — тот же акцент: она и есть предмет продукта. */
@@ -355,6 +357,11 @@ table { border-collapse: collapse; width: 100%; }
 
 @media (min-width: 1180px) {
   .split { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; }
+
+  /* Колонки равны намеренно. Карта заперта формой страны и остаётся
+     ниже соседа, но отбирать ширину у графика ради этого нельзя: на
+     сорока отобранных пикселях легенда рвётся на лишний ряд, а
+     подзаголовок — на лишнюю строку. Пустота под картой дешевле. */
   .split > :first-child { padding-right: var(--s-8); }
   .split > * + * { border-left: 1px solid var(--rule); padding-left: var(--s-8); }
 
@@ -651,8 +658,8 @@ table { border-collapse: collapse; width: 100%; }
    до того как человек начал разбирать слова. */
 .steps {
   display: grid; align-items: center;
-  grid-template-columns: 1fr auto 1fr;
-  grid-template-areas: "back meta next";
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "back go";
   gap: var(--s-4);
   margin-top: var(--gap);
   padding-top: var(--s-6);
@@ -663,15 +670,21 @@ table { border-collapse: collapse; width: 100%; }
    с внутренним отступом она висела бы в сантиметре от границы и не
    выглядела бы началом строки. */
 .steps__back { grid-area: back; justify-self: start; margin-left: calc(var(--s-4) * -1); }
-.steps__next { grid-area: next; justify-self: end; }
 
 /* На первом шаге возвращаться некуда, но место назад сохраняется: без
-   него «где мы» съезжает влево и подвал перестаёт быть одинаковым. */
+   него группа «где мы / дальше» перестала бы держаться правого края. */
 .steps__back:empty { pointer-events: none; }
 
+/* Где мы и куда дальше — одна группа, а не два предмета на разных краях.
+   Счётчик стоит вплотную к кнопке слева: взгляд, ушедший к главному
+   действию, по дороге читает, докуда дошёл. */
+.steps__go {
+  grid-area: go; justify-self: end;
+  display: flex; align-items: center; gap: var(--s-6);
+}
+
 .steps__where {
-  grid-area: meta;
-  display: grid; gap: var(--s-2); justify-items: center;
+  display: flex; align-items: center; gap: var(--s-3);
   font-family: var(--mono);
   font-size: var(--t-micro); font-weight: var(--w-medium);
   letter-spacing: .09em; text-transform: uppercase;
@@ -686,6 +699,31 @@ table { border-collapse: collapse; width: 100%; }
 }
 .steps__seg.is-done { background: var(--accent); }
 
+/* --- Кнопка перехода -------------------------------------------------
+   Две строки, а не одна. Надстрочное «Дальше» называет ДЕЙСТВИЕ, нижняя
+   строка — КУДА оно ведёт. Одной строкой «Когда отправлять» читалось как
+   заголовок раздела: кнопка не сообщала, что она вообще куда-то ведёт.
+   Форма одинакова на всех трёх шагах — меняется только заливка, поэтому
+   рука находит переход, не перечитывая подпись. */
+/* Класс размера объявлен ниже по файлу и при равной силе перебивает
+   правило отсюда — поэтому высота задана вместе с ним, а не в одиночку. */
+.steps__next, .steps__next.btn--lg {
+  gap: var(--s-4);
+  padding: var(--s-2) var(--s-5);
+  min-height: 54px;
+}
+.steps__next-text { display: grid; gap: 2px; text-align: left; }
+.steps__kicker {
+  font-family: var(--mono);
+  font-size: var(--t-micro); font-weight: var(--w-medium);
+  letter-spacing: .11em; text-transform: uppercase;
+  opacity: .62;
+}
+.steps__dest { font-size: var(--t-md); font-weight: var(--w-medium); line-height: 1.25; }
+/* У тихой кнопки надстрочная метка на общей прозрачности теряется:
+   на белом фоне ей нужен собственный цвет, а не приглушённый чёрный. */
+.btn--ghost .steps__kicker { opacity: 1; color: var(--fg-3); }
+
 /* Стрелка направления. Иконка, а не символ из шрифта: «→» в Inter
    заметно светлее текста рядом и выглядит съехавшим. */
 .btn__ico {
@@ -698,12 +736,21 @@ table { border-collapse: collapse; width: 100%; }
    под ним — откуда пришли и где находимся. */
 @media (max-width: 719px) {
   .steps {
-    grid-template-columns: auto 1fr;
-    grid-template-areas: "next next" "back meta";
-    gap: var(--s-4) var(--s-3);
+    grid-template-columns: 1fr;
+    grid-template-areas: "go" "back";
+    justify-items: start;
+    gap: var(--s-5);
   }
-  .steps__next { justify-self: stretch; width: 100%; }
-  .steps__where { justify-self: end; }
+  /* Кнопка на всю ширину, счётчик — строкой над ней: сначала «где я»,
+     потом «куда жму». В столбик группа не рассыпается, потому что
+     остаётся одним блоком. */
+  .steps__go {
+    justify-self: stretch;
+    flex-direction: column; align-items: stretch;
+    gap: var(--s-3);
+  }
+  .steps__next { justify-content: space-between; width: 100%; }
+  .steps__where { justify-content: flex-start; }
 }
 
 /* ====================================================== Служебные блоки */
@@ -1043,6 +1090,22 @@ table { border-collapse: collapse; width: 100%; }
   font-size: var(--t-xs); color: var(--fg-2);
 }
 .legend__item { display: flex; align-items: center; gap: var(--s-2); }
+
+/* Легенда графика вариантов — два ряда, а не один поток.
+   Сверху ЧТО за точка (цвет), снизу КАК она нарисована (форма, размер).
+   Единым потоком шесть ключей рвались на три случайные строки, и подпись
+   к графику занимала больше места, чем его нижняя треть. */
+.legend--chart { flex-direction: column; gap: var(--s-2); }
+.legend__row { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-5); }
+.legend__row--quiet { color: var(--fg-3); font-size: var(--t-2xs); }
+.legend__row--quiet:empty { display: none; }
+
+/* Уголок «за краем шкалы» */
+.legend__off {
+  width: 9px; height: 9px; flex: none;
+  border-top: 1.5px solid var(--fg-3); border-right: 1.5px solid var(--fg-3);
+  transform: rotate(-45deg);
+}
 .legend__dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .legend__dot--rec   { background: var(--accent); }
 .legend__dot--front { background: var(--accent-3); }
@@ -1165,6 +1228,13 @@ table { border-collapse: collapse; width: 100%; }
 .tip__leg i { flex: none; width: 12px; height: 0; border-top: 1.5px solid var(--rail); position: relative; top: -4px; }
 .tip__leg.is-road i { border-top: 1.5px dashed var(--road); }
 .tip__note { margin-top: var(--s-2); font-size: var(--t-xs); color: var(--fg-3); line-height: 1.5; }
+/* Числа в карточке настоящие, а положение точки — прижато к краю.
+   Об этом расхождении карточка обязана сказать сама. */
+.tip__off {
+  margin-top: var(--s-2); padding-top: var(--s-2);
+  border-top: 1px dashed var(--rule-2);
+  font-size: var(--t-2xs); color: var(--fg-3); line-height: 1.45;
+}
 
 .tip__flag {
   display: inline-block; margin-top: var(--s-3);
@@ -1215,6 +1285,17 @@ table { border-collapse: collapse; width: 100%; }
 .pt__label--rec  { fill: var(--accent); }
 .pt__label--base { fill: var(--road); }
 
+/* Уголок «за краем шкалы». Точка, прижатая к границе кадра, обязана
+   отличаться от той, что в самом деле там стоит: без уголка она молча
+   врала бы, будто стоит ровно столько. */
+.pt__off {
+  fill: none; stroke: var(--fg-3); stroke-width: 1.5;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.pt--off .pt__dot { stroke-width: 1; }
+.pt--dim.pt--off  { opacity: .45; }
+.pt--dim.pt--off:hover, .pt--dim.pt--off.is-hot { opacity: 1; }
+
 .front-line { fill: none; stroke: var(--accent-3); stroke-width: 1.2; stroke-opacity: .6; stroke-linejoin: round; }
 
 /* Куда лучше. Обе шкалы «меньше — лучше», и без этой стрелки график
@@ -1233,6 +1314,9 @@ table { border-collapse: collapse; width: 100%; }
   fill: var(--bad); font-family: var(--mono); font-size: 10.5px;
   font-weight: 500; letter-spacing: .07em; text-transform: uppercase;
 }
+/* Срок за правым краем — новость хорошая: успевают все. Кирпичный цвет
+   тут соврал бы тревогой, поэтому метка тихая. */
+.deadline-text--far { fill: var(--fg-4); }
 /* Зона «позже срока». Штриховка, а не заливка: заливка такой светлоты,
    чтобы не спорить с точками, на проекторе исчезала совсем, а более
    тёмная превращала половину графика в красное поле. */
@@ -1252,10 +1336,36 @@ table { border-collapse: collapse; width: 100%; }
 
 /* -------- Карта сети */
 
-/* Подложка. Заливка суши отделяет страну от бумаги, но настолько слабо,
-   что читается как оттенок, а не как фигура: спорить с маршрутом за
-   внимание она не должна. */
-.kz-land  { fill: var(--land); stroke: var(--coast); stroke-width: 1; stroke-linejoin: round; }
+/* Подложка. Страна обязана читаться как ФИГУРА — иначе двенадцать точек
+   и линии между ними висят в пустоте, и непонятно, почему Актау стоит
+   именно там. Прежняя заливка отличалась от бумаги на три процента
+   светлоты: контура не было видно вовсе.
+
+   Границу держат три слоя, а не один штрих:
+     ореол   — широкий мягкий след ПОД заливкой, наружу от границы;
+     заливка — суша, чуть теплее и темнее бумаги;
+     контур  — тонкая уверенная линия по краю.
+   Вместе они дают отмывку бумажной карты. Тише маршрута всё это
+   по-прежнему на порядок: смотрят на ход, а не на берег. */
+.kz-halo {
+  fill: none; stroke: var(--coast-halo); stroke-width: 6;
+  stroke-linejoin: round; opacity: .55;
+}
+.kz-land  {
+  fill: var(--land); stroke: var(--coast);
+  stroke-width: 1.15; stroke-linejoin: round;
+}
+/* Каспий гаснет к западу. Замыкающие отрезки моря — прямые, и при
+   сплошной заливке они читались бы как наклеенный голубой прямоугольник.
+   У берега вода в полную силу, к левому краю панели — сходит на нет. */
+.kz-sea { fill: url(#tolyq-sea); stroke: none; }
+/* Спад крутой, а не линейный: вода живёт узкой полосой у самого берега
+   и гаснет задолго до левого края. Так замыкание за кадром не только не
+   видно — оно и не может быть видно, сколько бы его ни растягивали. */
+.kz-sea__far  { stop-color: var(--sea); stop-opacity: 0; }
+.kz-sea__dim  { stop-color: var(--sea); stop-opacity: .08; }
+.kz-sea__mid  { stop-color: var(--sea); stop-opacity: .5; }
+.kz-sea__near { stop-color: var(--sea); stop-opacity: 1; }
 .kz-water { fill: var(--water); stroke: none; }
 
 .net-edge       { stroke: var(--rule-2); fill: none; stroke-width: 1; }

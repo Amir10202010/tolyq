@@ -227,24 +227,36 @@
 
       </div>
 
-      <!-- Подвал шага. Три постоянных места: назад слева, где мы находимся
-           по центру, следующий шаг справа. Раньше кнопка и счётчик стояли
-           по разным краям одной строки и читались как две несвязанные
-           вещи; теперь это одна панель управления, одинаковая на всех
-           трёх экранах, и рука ищет «Дальше» всегда в одном месте. -->
+      <!-- Подвал шага. Назад — слева, у края колонки. Где мы и куда дальше —
+           одной группой справа: это ОДИН вопрос («докуда дошли и что
+           теперь»), и разносить его половины по разным краям строки в
+           тысячу пикселей значит рвать связь. Раньше счётчик стоял ровно
+           по центру, кнопка — у правого края, и между ними зияло триста
+           пустых пикселей: три предмета вместо одного органа управления.
+
+           Слово «Дальше» на кнопке обязательно. Без него надпись читается
+           как заголовок раздела, а не как действие: «Когда отправлять» —
+           это название второго шага, и кнопка молчала о том, что она
+           куда-то ведёт. -->
       <nav class="steps" aria-label="Переход между шагами">
         <span class="steps__back" aria-hidden="true"></span>
-        <p class="steps__where">
-          <span class="steps__bar" aria-hidden="true">
-          <i class="steps__seg is-done"></i>
-          <i class="steps__seg"></i>
-          <i class="steps__seg"></i>
-          </span>
-          Шаг 1 из 3
-        </p>
-        <a class="btn btn--primary btn--lg steps__next" href="#/timing">
-          Когда отправлять <svg class="btn__ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9.5M9 4.5 12.5 8 9 11.5"/></svg>
-        </a>
+        <div class="steps__go">
+          <p class="steps__where">
+            <span class="steps__bar" aria-hidden="true">
+              <i class="steps__seg is-done"></i>
+              <i class="steps__seg"></i>
+              <i class="steps__seg"></i>
+            </span>
+            <span class="steps__count">Шаг 1 из 3</span>
+          </p>
+          <a class="btn btn--primary btn--lg steps__next" href="#/timing">
+            <span class="steps__next-text">
+              <span class="steps__kicker">Дальше</span>
+              <span class="steps__dest">Когда отправлять</span>
+            </span>
+            <svg class="btn__ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9.5M9 4.5 12.5 8 9 11.5"/></svg>
+          </a>
+        </div>
       </nav>
     </section>
 
@@ -280,21 +292,30 @@
       </div>
 
       <!-- Здесь «Дальше» вторична: главное действие этого экрана —
-           «Показать сборку вагона». Двух тёмных кнопок на экране быть
-           не должно, иначе главного действия снова нет. -->
+           «Показать сборку вагона», и второй тёмной кнопки на экране быть
+           не должно, иначе главного действия снова нет. Но и почти
+           невидимой она быть не может: форма у кнопки та же, что на
+           остальных шагах, — рука ищет «Дальше» в одном месте и находит
+           один и тот же предмет. Тише её делает только заливка. -->
       <nav class="steps" aria-label="Переход между шагами">
         <a class="btn btn--quiet steps__back" href="#/route"><svg class="btn__ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8H3.5M7 4.5 3.5 8 7 11.5"/></svg> Чем везти</a>
-        <p class="steps__where">
-          <span class="steps__bar" aria-hidden="true">
-          <i class="steps__seg is-done"></i>
-          <i class="steps__seg is-done"></i>
-          <i class="steps__seg"></i>
-          </span>
-          Шаг 2 из 3
-        </p>
-        <a class="btn btn--ghost btn--lg steps__next" href="#/impact">
-          Эффект за месяц <svg class="btn__ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9.5M9 4.5 12.5 8 9 11.5"/></svg>
-        </a>
+        <div class="steps__go">
+          <p class="steps__where">
+            <span class="steps__bar" aria-hidden="true">
+              <i class="steps__seg is-done"></i>
+              <i class="steps__seg is-done"></i>
+              <i class="steps__seg"></i>
+            </span>
+            <span class="steps__count">Шаг 2 из 3</span>
+          </p>
+          <a class="btn btn--ghost btn--lg steps__next" href="#/impact">
+            <span class="steps__next-text">
+              <span class="steps__kicker">Дальше</span>
+              <span class="steps__dest">Эффект за месяц</span>
+            </span>
+            <svg class="btn__ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9.5M9 4.5 12.5 8 9 11.5"/></svg>
+          </a>
+        </div>
       </nav>
     </section>
 
@@ -313,20 +334,28 @@
         <div class="panel__body" id="month-body"></div>
       </section>
 
-      <!-- Последний шаг замыкает круг: попробовать на своей заявке -->
+      <!-- Последний шаг замыкает круг: попробовать на своей заявке.
+           Надстрочная метка тут не «Дальше», а «Готово»: обход кончился,
+           и кнопка ведёт не вперёд по шагам, а обратно к заявке. -->
       <nav class="steps" aria-label="Переход между шагами">
         <a class="btn btn--quiet steps__back" href="#/timing"><svg class="btn__ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8H3.5M7 4.5 3.5 8 7 11.5"/></svg> Когда отправлять</a>
-        <p class="steps__where">
-          <span class="steps__bar" aria-hidden="true">
-          <i class="steps__seg is-done"></i>
-          <i class="steps__seg is-done"></i>
-          <i class="steps__seg is-done"></i>
-          </span>
-          Шаг 3 из 3
-        </p>
-        <button class="btn btn--primary btn--lg steps__next" type="button" id="try-own">
-          Посчитать свою заявку
-        </button>
+        <div class="steps__go">
+          <p class="steps__where">
+            <span class="steps__bar" aria-hidden="true">
+              <i class="steps__seg is-done"></i>
+              <i class="steps__seg is-done"></i>
+              <i class="steps__seg is-done"></i>
+            </span>
+            <span class="steps__count">Шаг 3 из 3</span>
+          </p>
+          <button class="btn btn--primary btn--lg steps__next" type="button" id="try-own">
+            <span class="steps__next-text">
+              <span class="steps__kicker">Готово</span>
+              <span class="steps__dest">Посчитать свою заявку</span>
+            </span>
+            <svg class="btn__ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v7.5M4.5 7 8 10.5 11.5 7"/></svg>
+          </button>
+        </div>
       </nav>
     </section>
 

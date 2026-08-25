@@ -126,13 +126,35 @@ export function createPareto(root, { onHover, onPick } = {}) {
     const plotW = w - M.left - M.right;
     const plotH = h - M.top - M.bottom;
 
-    const maxH   = Math.max(...points.map(p => p.r.hours), req.deadlineH) * 1.06;
-    const maxKzt = Math.max(...points.map(p => p.r.costKzt)) * 1.08;
+    // --- КАДР ОСЕЙ ------------------------------------------------------
+    //  Масштаб задают те варианты, между которыми человек в самом деле
+    //  выбирает: фронт и «как везут сегодня». Раньше его задавал максимум
+    //  по ВСЕМ точкам — и один отброшенный вариант за полтора миллиона
+    //  тенге сплющивал весь фронт в нижнюю десятую часть полотна. Три
+    //  главные точки стояли в двадцати пикселях друг от друга: график, за
+    //  которым сюда и приходят, не показывал ровно ничего.
+    //
+    //  Всё, что осталось за кадром, не выбрасывается: такая точка
+    //  прижимается к краю и помечается уголком. Числа у неё честные —
+    //  видны в карточке по наведению и целиком в таблице.
+    const decisive = [...sol.pareto, sol.truckBaseline, sol.recommended].filter(Boolean);
+    const decKzt = Math.max(...decisive.map(r => r.costKzt));
+    const decH   = Math.max(...decisive.map(r => r.hours));
+
+    const maxKzt = Math.max(decKzt * 1.10, 1);
+    // Срок берём в кадр, только если он рядом с данными. Дедлайн в 240 ч
+    // при вариантах на 40 отжал бы фронт к левому краю ровно так же, как
+    // это делал выброс по деньгам, — поэтому есть потолок в 1.75 длины.
+    const maxH = Math.max(decH * 1.12, Math.min(req.deadlineH * 1.22, decH * 1.75), 1);
+
     const co2s   = points.map(p => p.r.co2Kg);
     const co2Lo  = Math.min(...co2s), co2Hi = Math.max(...co2s);
 
-    const x = v => M.left + (v / maxH) * plotW;
-    const y = v => M.top + plotH - (v / maxKzt) * plotH;
+    // Точку за кадром прижимаем к краю, а не выпускаем за него: иначе
+    // она уедет под подписи осей и станет неотличима от мусора.
+    const EDGE = 8;
+    const x = v => Math.min(M.left + (v / maxH) * plotW, M.left + plotW - EDGE);
+    const y = v => Math.max(M.top + plotH - (v / maxKzt) * plotH, M.top + EDGE);
     const rad = v => co2Hi - co2Lo < 1e-6 ? 6
       : R_MIN + (R_MAX - R_MIN) * Math.sqrt((v - co2Lo) / (co2Hi - co2Lo));
 
@@ -143,9 +165,17 @@ export function createPareto(root, { onHover, onPick } = {}) {
     //  Косая штриховка читается и на проекторе, и в чёрно-белой распечатке,
     //  а на цвет не полагается вовсе: это область «сюда нельзя», и она
     //  обязана быть видна раньше, чем человек начнёт искать точки.
-    const dx = x(req.deadlineH);
+    // Срок может оказаться и за правым краем — тогда в кадре его нет, и
+    // рисовать нечего: об этом скажет отдельная метка ниже.
+    const deadlineIn = req.deadlineH <= maxH;
+    const dx = M.left + (req.deadlineH / maxH) * plotW;
     const zoneW = M.left + plotW - dx;
-    if (dx < M.left + plotW) {
+    // Штриховку стелем, только если полоса достаточно широка, чтобы
+    // что-то значить. Когда все варианты укладываются в срок с большим
+    // запасом, от зоны остаётся полоска в десяток пикселей: это уже не
+    // «сюда нельзя», а шум у самой рамки. Линия срока при этом остаётся
+    // на месте — она и несёт весь смысл.
+    if (deadlineIn && zoneW >= 34) {
       parts.push(`<defs>
         <pattern id="tolyq-late" width="7" height="7" patternUnits="userSpaceOnUse"
                  patternTransform="rotate(45)">
@@ -190,11 +220,17 @@ export function createPareto(root, { onHover, onPick } = {}) {
     }
 
     // --- линия срока ---------------------------------------------------
-    if (dx < M.left + plotW) {
+    if (deadlineIn) {
       parts.push(`<line class="deadline-line" x1="${dx.toFixed(1)}" y1="${M.top}" x2="${dx.toFixed(1)}" y2="${M.top + plotH}"/>`);
       const anchor = dx > M.left + plotW - 70 ? 'end' : 'start';
       const tx = anchor === 'end' ? dx - 5 : dx + 5;
       parts.push(`<text class="deadline-text" x="${tx.toFixed(1)}" y="${M.top + 10}" text-anchor="${anchor}">срок ${Math.round(req.deadlineH)} ч</text>`);
+    } else {
+      // Срок дальше правого края — значит в него укладываются все
+      // варианты в кадре. Молчать об этом нельзя: человек ищет линию
+      // срока глазами и, не найдя, решает, что её забыли нарисовать.
+      parts.push(`<text class="deadline-text deadline-text--far" x="${(M.left + plotW).toFixed(1)}"
+        y="${M.top + 10}" text-anchor="end">срок ${Math.round(req.deadlineH)} ч — дальше края</text>`);
     }
 
     // --- ступенчатая линия фронта --------------------------------------
@@ -211,9 +247,17 @@ export function createPareto(root, { onHover, onPick } = {}) {
     // --- точки ----------------------------------------------------------
     const nodes = [];
     for (const p of points) {
-      const px = x(p.r.hours), py = y(p.r.costKzt), pr = rad(p.r.co2Kg);
+      const px = x(p.r.hours), py = y(p.r.costKzt);
+      const overKzt = p.r.costKzt > maxKzt;
+      const overH   = p.r.hours   > maxH;
+      // У точки за кадром размер больше ничего не кодирует: её положение
+      // и так условно, и крупный кружок у самого края читался бы как
+      // полноценный вариант. Оставляем маленькую метку — она про то,
+      // что вариант есть, а не про то, сколько он стоит.
+      const pr = (overKzt || overH) ? 3.2 : rad(p.r.co2Kg);
       const cls = ['pt', `pt--${p.kind}`];
       if (!p.r.feasible) cls.push('pt--infeasible');
+      if (overKzt || overH) cls.push('pt--off');
 
       let mark;
       if (p.r.feasible) {
@@ -227,12 +271,22 @@ export function createPareto(root, { onHover, onPick } = {}) {
         </g>`;
       }
 
+      // Уголок «за шкалой». Точка прижата к краю, и без пометки она
+      // соврала бы: встала бы в один ряд с теми, что в кадре, будто
+      // стоит столько же. Уголок смотрит туда, куда точка ушла.
+      const off = (overKzt || overH)
+        ? caret(px, py, pr, overH ? 1 : 0, overKzt ? -1 : 0)
+        : '';
+
       // Точка — не картинка, а орган управления: по ней щёлкают, чтобы
       // закрепить вариант, и на неё встают с клавиатуры.
+      const outNote = overKzt && overH ? ' — дороже и дольше шкалы'
+                    : overKzt ? ' — дороже шкалы'
+                    : overH ? ' — дольше шкалы' : '';
       parts.push(`<g class="${cls.join(' ')}" data-id="${p.r.id}" role="button" tabindex="0"
-        aria-label="${esc(p.r.label)}: ${fmt.kzt(p.r.costKzt)}, ${fmt.hoursShort(p.r.hours)}, ${fmt.co2(p.r.co2Kg)}">
+        aria-label="${esc(p.r.label)}: ${fmt.kzt(p.r.costKzt)}, ${fmt.hoursShort(p.r.hours)}, ${fmt.co2(p.r.co2Kg)}${outNote}">
         <circle class="pt__halo" cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${(pr + 5).toFixed(1)}"/>
-        ${mark}
+        ${mark}${off}
         <circle class="pt__hit" cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${Math.max(13, pr + 8).toFixed(1)}" fill="transparent"/>
       </g>`);
 
@@ -240,28 +294,33 @@ export function createPareto(root, { onHover, onPick } = {}) {
     }
 
     // --- подписи двух опорных точек ------------------------------------
+    //  Ставим начерно, а разбираем после вставки: настоящую ширину
+    //  капительной строки до отрисовки не знает никто, а прикидка по
+    //  числу знаков врёт на десяток пикселей — ровно столько, чтобы
+    //  подпись «везут сегодня» легла поверх соседней точки.
     for (const key of ['base', 'rec']) {
       const n = nodes.find(v => v.kind === key);
       if (!n) continue;
       // Подписи набраны капителью и потому длинные не влезают: у опорной
       // точки оставлено два слова, полная формулировка есть в подсказке.
       const label = key === 'rec' ? 'рекомендуем' : 'везут сегодня';
-      const wantsLeft = n.px > M.left + plotW * 0.42;
-      const tx = wantsLeft ? n.px - n.pr - 7 : n.px + n.pr + 7;
-      const ty = key === 'rec' ? n.py - n.pr - 7 : n.py + n.pr + 13;
-      parts.push(`<text class="pt__label pt__label--${key}" x="${tx.toFixed(1)}" y="${ty.toFixed(1)}"
-        text-anchor="${wantsLeft ? 'end' : 'start'}">${label}</text>`);
+      parts.push(`<text class="pt__label pt__label--${key}" data-anchor="${key}"
+        x="${n.px.toFixed(1)}" y="${n.py.toFixed(1)}" text-anchor="start">${label}</text>`);
     }
+
+    const anyOff = points.some(p => p.r.costKzt > maxKzt || p.r.hours > maxH);
+    const anyMiss = points.some(p => !p.r.feasible);
 
     root.innerHTML =
       `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="group"
             aria-label="Фронт Парето: стоимость против срока, размер точки — выбросы CO₂">
          ${parts.join('')}
-       </svg>` + legendHtml();
+       </svg>` + legendHtml({ anyOff, anyMiss });
     if (tip) root.appendChild(tip);
 
     // --- события --------------------------------------------------------
     const svg = root.querySelector('svg');
+    placeAnchorLabels(svg, nodes, { left: M.left, top: M.top, right: M.left + plotW, bottom: M.top + plotH });
     for (const n of nodes) {
       n.el = svg.querySelector(`.pt[data-id="${cssEsc(n.id)}"]`);
       if (!n.el) continue;
@@ -283,7 +342,7 @@ export function createPareto(root, { onHover, onPick } = {}) {
     }
     svg.addEventListener('pointerleave', leave);
 
-    geom = { nodes, w, h };
+    geom = { nodes, w, h, maxKzt, maxH };
     paint();
   }
 
@@ -326,6 +385,14 @@ export function createPareto(root, { onHover, onPick } = {}) {
       <div class="tip__leg is-${l.mode}"><i></i><span>${nameOf(l.from)} — ${nameOf(l.to)},
       ${fmt.km(l.km)}, ${fmt.hoursShort(l.hours)}${l.transshipment ? ', с перегрузкой' : ''}</span></div>`).join('');
 
+    // Точка прижата к краю — говорим об этом прямо. Числа в строках выше
+    // настоящие, но её ПОЛОЖЕНИЕ на графике врёт, и молчать нельзя.
+    const outOf = r.costKzt > geom.maxKzt || r.hours > geom.maxH
+      ? `<p class="tip__off">точка прижата к краю: вариант ${
+          r.costKzt > geom.maxKzt && r.hours > geom.maxH ? 'дороже и дольше'
+          : r.costKzt > geom.maxKzt ? 'дороже' : 'дольше'} шкалы</p>`
+      : '';
+
     let flag = '';
     // Кирпичный цвет — только у настоящего провала, то есть у срыва срока.
     // «Как везут сегодня» — не ошибка, а точка отсчёта, и метится она
@@ -344,7 +411,7 @@ export function createPareto(root, { onHover, onPick } = {}) {
          `<div class="tip__row"><span>${k}</span><span>${v}</span></div>`).join('')}</div>
        <div class="tip__legs">${legs}</div>
        ${r.note ? `<p class="tip__note">${esc(r.note)}</p>` : ''}
-       ${flag}`;
+       ${outOf}${flag}`;
     tip.hidden = false;
 
     const tw = tip.offsetWidth, th = tip.offsetHeight;
@@ -370,17 +437,30 @@ export function createPareto(root, { onHover, onPick } = {}) {
 /**
  * Легенда написана словами грузоотправителя, а не теории Парето:
  * «неулучшаемый» и «отброшен» — термины перебора, человеку они говорят
- * ровно ничего. Ключ к размеру точки стоит здесь же — раньше он жил в
- * двадцатисловной сноске под графиком, которую никто не читал.
+ * ровно ничего.
+ *
+ * Шесть ключей в один поток заворачивались в три рваные строки, и
+ * легенда занимала больше места, чем нижняя треть самого графика.
+ * Теперь их два ряда с ясным делением: сверху — ЧТО за точка (цвет),
+ * снизу — КАК она нарисована (форма и размер). Ключи, которым на этом
+ * наборе данных нечего объяснять, не печатаются вовсе: подпись про
+ * «не успевает» при отсутствии крестиков — чистый шум.
  */
-function legendHtml() {
-  return `<div class="legend">
-    <span class="legend__item"><i class="legend__dot legend__dot--rec"></i>наш выбор</span>
-    <span class="legend__item"><i class="legend__dot legend__dot--front"></i>тоже хорошие</span>
-    <span class="legend__item"><i class="legend__dot legend__dot--base"></i>так возят сейчас</span>
-    <span class="legend__item"><i class="legend__dot legend__dot--dim"></i>хуже по всему</span>
-    <span class="legend__item"><i class="legend__cross"></i>не успевает</span>
-    <span class="legend__item"><i class="legend__size"></i>размер — выбросы</span>
+function legendHtml({ anyOff = false, anyMiss = false } = {}) {
+  const shape = [
+    anyMiss ? `<span class="legend__item"><i class="legend__cross"></i>не успевает</span>` : '',
+    `<span class="legend__item"><i class="legend__size"></i>размер — выбросы CO₂</span>`,
+    anyOff ? `<span class="legend__item"><i class="legend__off"></i>за краем шкалы</span>` : '',
+  ].filter(Boolean).join('');
+
+  return `<div class="legend legend--chart">
+    <div class="legend__row">
+      <span class="legend__item"><i class="legend__dot legend__dot--rec"></i>наш выбор</span>
+      <span class="legend__item"><i class="legend__dot legend__dot--front"></i>тоже хорошие</span>
+      <span class="legend__item"><i class="legend__dot legend__dot--base"></i>так возят сейчас</span>
+      <span class="legend__item"><i class="legend__dot legend__dot--dim"></i>хуже по всему</span>
+    </div>
+    <div class="legend__row legend__row--quiet">${shape}</div>
   </div>`;
 }
 
@@ -394,6 +474,75 @@ function emptyHtml(title, text) {
     <p class="empty__title">${title}</p>
     <p class="empty__text">${text}</p>
   </div>`;
+}
+
+// ---------------------------------------------------------------------
+//  РАССТАНОВКА ДВУХ ОПОРНЫХ ПОДПИСЕЙ
+//  «рекомендуем» и «везут сегодня» — единственный текст внутри поля
+//  графика, и лечь на чужую точку он не имеет права: подпись поверх
+//  кружка не читается сама и прячет вариант под собой.
+//
+//  Пробуем шесть положений вокруг своей точки и берём первое, которое
+//  не задевает ни одну другую точку и не вылезает из поля. Не подошло
+//  ни одно — оставляем последнее: подпись у опорной точки нужнее
+//  идеального зазора, а совсем убрать её нельзя, иначе на графике
+//  пропадёт ответ.
+// ---------------------------------------------------------------------
+const LABEL_SPOTS = [
+  [ 1, -1, 'start'],   // справа сверху
+  [-1, -1, 'end'],     // слева сверху
+  [ 1,  1, 'start'],   // справа снизу
+  [-1,  1, 'end'],     // слева снизу
+  [ 0, -1, 'middle'],  // над точкой
+  [ 0,  1, 'middle'],  // под точкой
+];
+
+function placeAnchorLabels(svg, nodes, box) {
+  if (!svg) return;
+
+  // Точки — препятствия. Своя точка тоже: подпись обходит и её.
+  const blocks = nodes.map(n => ({
+    x: n.px - n.pr - 2, y: n.py - n.pr - 2,
+    width: n.pr * 2 + 4, height: n.pr * 2 + 4,
+  }));
+
+  for (const el of svg.querySelectorAll('.pt__label')) {
+    const n = nodes.find(v => v.kind === el.dataset.anchor);
+    if (!n) continue;
+
+    for (const [sx, sy, anchor] of LABEL_SPOTS) {
+      const dx = sx === 0 ? 0 : sx * (n.pr + 7);
+      const dy = sy < 0 ? -(n.pr + 7) : (n.pr + 14);
+      el.setAttribute('x', (n.px + dx).toFixed(1));
+      el.setAttribute('y', (n.py + dy).toFixed(1));
+      el.setAttribute('text-anchor', anchor);
+
+      const b = el.getBBox();
+      const r = { x: b.x - 2, y: b.y - 1, width: b.width + 4, height: b.height + 2 };
+      if (r.x < box.left - 2 || r.x + r.width > box.right + 2) continue;
+      if (r.y < box.top || r.y + r.height > box.bottom) continue;
+      if (blocks.some(t => hits(t, r))) continue;
+      break;
+    }
+  }
+}
+
+const hits = (a, b) =>
+  a.x < b.x + b.width && b.x < a.x + a.width &&
+  a.y < b.y + b.height && b.y < a.y + a.height;
+
+/**
+ * Уголок у точки, прижатой к краю кадра. Смотрит в ту сторону, куда
+ * вариант ушёл за шкалу: вверх — дороже, вправо — дольше, наискось —
+ * и то и другое.
+ */
+function caret(px, py, pr, dirX, dirY) {
+  const len = Math.hypot(dirX, dirY) || 1;
+  const ux = dirX / len, uy = dirY / len;
+  const cx = px + ux * (pr + 6), cy = py + uy * (pr + 6);
+  const ang = Math.atan2(uy, ux) * 180 / Math.PI;
+  return `<path class="pt__off" d="M -2.6 -3.2 L 0.8 0 L -2.6 3.2"
+    transform="translate(${cx.toFixed(1)} ${cy.toFixed(1)}) rotate(${ang.toFixed(1)})"/>`;
 }
 
 /** Круглые деления: 0, 100 тыс, 200 тыс… а не 0, 87 435, 174 870. */
