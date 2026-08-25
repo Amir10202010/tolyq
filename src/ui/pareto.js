@@ -65,6 +65,14 @@ export function createPareto(root, { onHover } = {}) {
     if (!w) return;
 
     const { solution: sol, request: req } = data;
+
+    if (!sol.pareto.length && !sol.dominated.length) {
+      root.innerHTML = emptyHtml('Вариантов не нашлось',
+        'Между этими городами нет ни одного пути. Выберите другой пункт назначения.');
+      geom = null;
+      return;
+    }
+
     const h = Math.round(Math.min(480, Math.max(272, w * 0.80)));
 
     const points = [
@@ -112,8 +120,8 @@ export function createPareto(root, { onHover } = {}) {
     }
     parts.push(`<line class="ax-line" x1="${M.left}" y1="${M.top + plotH}" x2="${M.left + plotW}" y2="${M.top + plotH}"/>`);
     parts.push(`<line class="ax-line" x1="${M.left}" y1="${M.top}" x2="${M.left}" y2="${M.top + plotH}"/>`);
-    parts.push(`<text class="ax-title" x="${M.left}" y="${M.top - 6}">стоимость, ₸</text>`);
-    parts.push(`<text class="ax-title" x="${M.left + plotW}" y="${h - 6}" text-anchor="end">срок в пути, ч</text>`);
+    parts.push(`<text class="ax-title" x="${M.left}" y="${M.top - 6}">Стоимость, ₸</text>`);
+    parts.push(`<text class="ax-title" x="${M.left + plotW}" y="${h - 6}" text-anchor="end">Срок доставки, часов</text>`);
 
     // --- линия срока ---------------------------------------------------
     if (dx < M.left + plotW) {
@@ -278,6 +286,18 @@ function legendHtml() {
     <span class="legend__item"><i class="legend__dot legend__dot--base"></i>как везут сегодня</span>
     <span class="legend__item"><i class="legend__dot legend__dot--dim"></i>отброшен</span>
     <span class="legend__item"><i class="legend__cross"></i>не успевает</span>
+  </div>`;
+}
+
+
+/** Пустое состояние графика: не белое пятно, а что делать дальше. */
+function emptyHtml(title, text) {
+  return `<div class="empty">
+    <span class="empty__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 17V7m0 10 6-3 6 3 6-3V4l-6 3-6-3-6 3"/></svg></span>
+    <p class="empty__title">${title}</p>
+    <p class="empty__text">${text}</p>
   </div>`;
 }
 

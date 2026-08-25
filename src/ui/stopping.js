@@ -106,8 +106,8 @@ export function createStopping(root, {} = {}) {
 
             <line class="ax-line" x1="${M.left}" y1="${M.top + plotH}" x2="${M.left + plotW}" y2="${M.top + plotH}"/>
             <line class="ax-line" x1="${M.left}" y1="${M.top}" x2="${M.left}" y2="${M.top + plotH}"/>
-            <text class="ax-title" x="${M.left}" y="${M.top - 5}">тонн в вагоне</text>
-            <text class="ax-title" x="${(M.left + plotW).toFixed(1)}" y="${h - 4}" text-anchor="end">часов ожидания</text>
+            <text class="ax-title" x="${M.left}" y="${M.top - 5}">Накоплено, тонн</text>
+            <text class="ax-title" x="${(M.left + plotW).toFixed(1)}" y="${h - 4}" text-anchor="end">Часов ожидания</text>
           </svg>
         </div>
 

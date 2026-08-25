@@ -34,6 +34,16 @@ export function createSummary(root) {
     if (!w || !month) return;
 
     const days = month.dailyTrucksAvoided || [];
+    if (!days.length) {
+      root.innerHTML = `<div class="empty">
+        <span class="empty__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="1.8" stroke-linecap="round"><path d="M4 20V10m5 10V4m5 16v-7m5 7V8"/></svg></span>
+        <p class="empty__title">Данных за месяц пока нет</p>
+        <p class="empty__text">Движок ещё не прогонял этот коридор.
+           Сводка появится после первого расчёта.</p>
+      </div>`;
+      return;
+    }
     const h = Math.round(Math.min(190, Math.max(120, w * 0.16)));
     const plotW = w - M.left - M.right;
     const plotH = h - M.top - M.bottom;
@@ -85,7 +95,7 @@ export function createSummary(root) {
             ${yTicks}
             ${bars}
             <line class="bar-base" x1="${M.left}" y1="${M.top + plotH}" x2="${M.left + plotW}" y2="${M.top + plotH}"/>
-            <text class="ax-title" x="${M.left}" y="${M.top - 4}">фур не поехало, по дням</text>
+            <text class="ax-title" x="${M.left}" y="${M.top - 4}">Фур не поехало, по дням месяца</text>
             <text class="ax-text" x="${M.left}" y="${h - 5}">1</text>
             <text class="ax-text" x="${(M.left + plotW).toFixed(1)}" y="${h - 5}" text-anchor="end">${days.length}</text>
           </svg>

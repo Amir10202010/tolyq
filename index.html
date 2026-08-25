@@ -64,7 +64,7 @@
       <form class="form" id="form" autocomplete="off">
         <!-- Свободный ввод. Разбирает explain.js → parseRequest().
              Не разобрал — просто ничего не происходит. -->
-        <div class="field" id="field-free">
+        <div class="field field--free" id="field-free">
           <label class="label" for="f-free">Опишите груз своими словами</label>
           <textarea class="input input--area" id="f-free" rows="2"
                     placeholder="8 тонн продуктов из Астаны в Алматы, надо за двое суток"></textarea>
@@ -157,14 +157,21 @@
         <section class="card card--pareto">
           <header class="card__head">
             <h2 class="card__title">Варианты доставки</h2>
-            <p class="card__sub">Каждая точка — способ довезти груз. Ниже и левее — лучше</p>
-            <span class="badge badge--muted" id="pareto-meta"></span>
+            <p class="card__sub" id="pareto-meta">Каждая точка — способ довезти груз</p>
+            <div class="switch" id="options-switch" role="tablist" aria-label="Представление вариантов">
+              <button class="switch__btn" type="button" role="tab" data-mode="chart" aria-selected="true">График</button>
+              <button class="switch__btn" type="button" role="tab" data-mode="table" aria-selected="false">Таблица</button>
+            </div>
           </header>
-          <div class="card__chart">
+
+          <div class="card__chart" id="options-chart">
             <div class="chart" id="pareto-chart"></div>
             <div class="tip" id="pareto-tip" hidden></div>
           </div>
-          <footer class="card__foot">
+
+          <div id="options-table" hidden></div>
+
+          <footer class="card__foot" id="pareto-note">
             Вправо — дольше, вверх — дороже, крупнее точка — больше выбросов.
             Наведите на точку: увидите её маршрут на карте справа.
           </footer>

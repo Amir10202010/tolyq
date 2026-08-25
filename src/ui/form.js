@@ -7,6 +7,7 @@
 
 import { NODES, CARGO_TYPES } from '../core/types.js';
 import { parseRequest } from './explain.js';
+import { toast } from './toast.js';
 
 const WEIGHT_KEYS = ['cost', 'time', 'co2'];
 const PARSE_DEBOUNCE_MS = 650;
@@ -62,6 +63,7 @@ export function createForm(root, { initial, onChange }) {
   const free = el('#f-free');
   let parseTimer = null;
   let parseSeq = 0;                    // защита от гонки медленных ответов
+  let lastParsed = '';                 // не разбираем один и тот же текст дважды
 
   free.addEventListener('input', () => {
     clearTimeout(parseTimer);
@@ -79,7 +81,9 @@ export function createForm(root, { initial, onChange }) {
   root.querySelector('#f-reset').addEventListener('click', () => {
     apply(initial);
     free.value = '';
+    lastParsed = '';
     emit();
+    toast('Демо-сценарий возвращён', { kind: 'good' });
   });
 
   paintWeights();
@@ -92,14 +96,26 @@ export function createForm(root, { initial, onChange }) {
    */
   async function runParse() {
     const text = free.value.trim();
-    if (!text) return;
+    if (!text || text === lastParsed) return;
     const seq = ++parseSeq;
+    lastParsed = text;
 
+    setBusy(true);
     let patch = null;
     try { patch = await parseRequest(text); } catch { patch = null; }
 
     if (seq !== parseSeq) return;      // пока ждали, человек дописал — ответ протух
-    if (!patch || typeof patch !== 'object') return;
+    setBusy(false);
+
+    if (!patch || typeof patch !== 'object') {
+      // Ничего не поняли. Молчать нельзя: человек не узнает, сработало ли
+      // вообще. Но и ошибкой это не является — форма ниже работает.
+      toast('Не разобрали описание', {
+        text: 'Заполните поля ниже вручную — или напишите, например: 12 т продуктов из Астаны в Алматы за двое суток',
+        kind: 'warn',
+      });
+      return;
+    }
 
     const touched = [];
     if (patch.from && byId(patch.from))      { fields.from.value = patch.from;      touched.push('from'); }
@@ -120,9 +136,35 @@ export function createForm(root, { initial, onChange }) {
       touched.push('weights');
     }
 
-    if (!touched.length) return;
+    if (!touched.length) {
+      toast('В описании нет новых данных', { text: 'Поля уже стоят так, как вы написали', kind: 'warn' });
+      return;
+    }
     highlight(touched);
+    toast('Заявка обновлена', { text: describe(touched), kind: 'good' });
     emit();
+  }
+
+  /** Что именно поняли — человеку, а не в консоль. */
+  function describe(keys) {
+    const names = {
+      from: 'откуда', to: 'куда', tons: 'вес', volumeM3: 'объём',
+      deadlineH: 'срок', cargoType: 'тип груза', weights: 'приоритеты',
+    };
+    const list = keys.map(k => names[k] || k);
+    return 'Распознано: ' + list.join(', ');
+  }
+
+  function setBusy(on) {
+    free.setAttribute('aria-busy', String(on));
+    const box = root.querySelector('.field--free');
+    let spin = box.querySelector('.field__busy');
+    if (on && !spin) {
+      spin = document.createElement('span');
+      spin.className = 'field__busy';
+      box.appendChild(spin);
+    }
+    if (!on && spin) spin.remove();
   }
 
   /** Подсветка гаснет сама: это сообщение «вот что я понял», а не состояние. */

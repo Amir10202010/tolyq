@@ -19,7 +19,9 @@ import { createNetworkMap } from './network-map.js';
 import { createLoadbar } from './loadbar.js';
 import { createStopping } from './stopping.js';
 import { createSummary } from './summary.js';
+import { createTable } from './table.js';
 import { explainSolution, getModelInfo } from './explain.js';
+import { toast } from './toast.js';
 
 registerNames(NODES);
 
@@ -73,6 +75,10 @@ const pareto = createPareto(el('pareto-chart'), {
 
 const map = createNetworkMap(el('network-chart'));
 
+const table = createTable(el('options-table'), {
+  onHover: route => setHovered(route),
+});
+
 const loadbar = createLoadbar(el('loadbar-body'), {
   controls: { toggle: clockToggle, reset: clockReset },
 });
@@ -85,6 +91,35 @@ const form = createForm(document.getElementById('form'), {
   initial: DEMO_REQUEST,
   onChange: req => recompute(req),
 });
+
+// ---------------------------------------------------------------------
+//  ПРЕДСТАВЛЕНИЕ ВАРИАНТОВ
+//  График показывает форму компромисса, таблица — точные числа и
+//  сортировку. Логисту нужно и то и другое, поэтому это переключатель,
+//  а не выбор за него.
+// ---------------------------------------------------------------------
+let optionsMode = 'chart';
+
+for (const btn of el('options-switch').querySelectorAll('.switch__btn')) {
+  btn.addEventListener('click', () => setOptionsMode(btn.dataset.mode));
+}
+
+function setOptionsMode(mode) {
+  optionsMode = mode;
+  el('options-chart').hidden = mode !== 'chart';
+  el('options-table').hidden = mode !== 'table';
+  document.querySelector('.card--pareto').classList.toggle('is-wide', mode === 'table');
+  for (const b of el('options-switch').querySelectorAll('.switch__btn')) {
+    b.setAttribute('aria-selected', String(b.dataset.mode === mode));
+  }
+  el('pareto-note').innerHTML = mode === 'chart'
+    ? `Вправо — дольше, вверх — дороже, крупнее точка — больше выбросов.
+       Наведите на точку: увидите её маршрут на карте справа.`
+    : `Щёлкните заголовок столбца, чтобы отсортировать.
+       Наведите на строку: увидите её маршрут на карте справа.`;
+  if (mode === 'chart') pareto.update(state.solution, state.request);
+  else table.update(state.solution, state.request);
+}
 
 // ---------------------------------------------------------------------
 //  РАЗДЕЛЫ
@@ -135,7 +170,7 @@ function applyView() {
 function refreshView(v) {
   if (!state.solution) return;
   if (v === 'route') {
-    pareto.update(state.solution, state.request);
+    renderOptions();
     map.update(engine.getNetwork(), state.request);
     map.showRoute(state.hovered || state.solution.recommended);
   } else if (v === 'timing') {
@@ -162,31 +197,16 @@ asideToggle.addEventListener('click', () => {
 // ---------------------------------------------------------------------
 //  Пересчёт
 // ---------------------------------------------------------------------
+let solveSeq = 0;
+
+/**
+ * Пересчёт терпит и синхронный ответ движка, и обещание. Моки отвечают
+ * мгновенно, настоящий движок может считать заметно дольше — тогда на
+ * это время показывается состояние ожидания, а не пустой экран.
+ */
 function recompute(request) {
   state.request = request;
-  state.solution = engine.solve(request);
-  state.month = engine.runMonth(request.from, request.to);
-  state.demo = buildDemo(state.solution, request);
   state.hovered = null;   // маршруты пересобрались, старая ссылка протухла
-
-  renderVerdict();
-  pareto.update(state.solution, state.request);
-
-  map.update(engine.getNetwork(), state.request);
-  map.showRoute(state.solution.recommended);
-  renderNetworkMeta();
-
-  const ctx = { request, solution: state.solution, demo: state.demo };
-  loadbar.update(ctx);
-  stopping.update(ctx);
-  summary.update(state.month);
-
-  const sol = state.solution;
-  el('pareto-meta').textContent =
-    `${sol.pareto.length} из ${sol.considered ?? (sol.pareto.length + sol.dominated.length)}`;
-  el('loadbar-meta').textContent = `вагон ${fmt.tons(state.demo.capacityTons)}`;
-  el('stopping-meta').textContent = `горизонт ${fmt.hoursShort(state.demo.horizonH)}`;
-  el('month-meta').textContent = `загрузка ${fmt.pct(state.month.avgFillPct)}`;
 
   el('aside-summary').textContent = [
     `${fmt.tons(request.tons, request.tons % 1 ? 1 : 0)} ${engine.CARGO_TYPES[request.cargoType].toLowerCase()}`,
@@ -194,17 +214,114 @@ function recompute(request) {
     fmt.hoursShort(request.deadlineH),
   ].join(' · ');
 
-  clockReset();
+  const seq = ++solveSeq;
+  let answer;
+  try {
+    answer = engine.solve(request);
+  } catch (err) {
+    showFailure(err);
+    return;
+  }
+
+  if (answer && typeof answer.then === 'function') {
+    setBusy(true);
+    answer.then(sol => {
+      if (seq !== solveSeq) return;      // пока считали, заявку поменяли
+      setBusy(false);
+      apply(sol);
+    }).catch(err => {
+      if (seq !== solveSeq) return;
+      setBusy(false);
+      showFailure(err);
+    });
+    return;
+  }
+
+  apply(answer);
+
+  function apply(sol) {
+    if (!sol || !sol.recommended) { showFailure(new Error('движок не вернул решение')); return; }
+
+    state.solution = sol;
+    state.month = engine.runMonth(request.from, request.to);
+    state.demo = buildDemo(sol, request);
+
+    renderVerdict();
+    renderOptions();
+
+    map.update(engine.getNetwork(), state.request);
+    map.showRoute(sol.recommended);
+    renderNetworkMeta();
+
+    const ctx = { request, solution: sol, demo: state.demo };
+    loadbar.update(ctx);
+    stopping.update(ctx);
+    summary.update(state.month);
+
+    const considered = sol.considered ?? (sol.pareto.length + sol.dominated.length);
+    el('pareto-meta').textContent =
+      `${considered} ${fmt.plural(considered, 'вариант', 'варианта', 'вариантов')} перебрано, ` +
+      `${sol.pareto.length} ${fmt.plural(sol.pareto.length, 'неулучшаемый', 'неулучшаемых', 'неулучшаемых')}`;
+    el('loadbar-meta').textContent = `вагон ${fmt.tons(state.demo.capacityTons)}`;
+    el('stopping-meta').textContent = `горизонт ${fmt.hoursShort(state.demo.horizonH)}`;
+    el('month-meta').textContent = `загрузка ${fmt.pct(state.month.avgFillPct)}`;
+
+    clockReset();
+  }
+}
+
+/** Оба представления вариантов кормятся из одного решения. */
+function renderOptions() {
+  if (optionsMode === 'chart') pareto.update(state.solution, state.request);
+  else table.update(state.solution, state.request);
 }
 
 /**
- * Связка двух визуализаций. Ради неё всё и затевалось: точка на фронте
- * под курсором мгновенно показывает, каким путём по сети она получена.
+ * Движок считает. Прежний ответ не гасим — он ещё верен для прошлой
+ * заявки, — но помечаем как несвежий, а разбор словами подменяем
+ * скелетом: именно он пересобирается дольше всего.
+ */
+function setBusy(on) {
+  const box = el('verdict');
+  box.setAttribute('aria-busy', String(on));
+  box.classList.toggle('is-stale', on);
+  el('f-reset').classList.toggle('is-busy', on);
+
+  const why = el('why');
+  if (!why) return;
+  if (on) {
+    why.innerHTML = `<h2 class="why__title">Почему так</h2>
+      <div class="skeleton skeleton--line"></div>
+      <div class="skeleton skeleton--line"></div>
+      <div class="skeleton skeleton--line"></div>`;
+  }
+}
+
+/** Движок упал. Интерфейс обязан объяснить это словами, а не белым экраном. */
+function showFailure(err) {
+  el('verdict').classList.remove('is-stale');
+  el('verdict').classList.remove('verdict--compact');
+  el('verdict').innerHTML = `
+    <div class="empty empty--error">
+      <span class="empty__ico">${ICON_ALERT}</span>
+      <p class="empty__title">Не удалось рассчитать маршрут</p>
+      <p class="empty__text">${esc(err?.message || 'Движок не ответил.')}
+         Измените заявку или верните демо-сценарий.</p>
+    </div>`;
+  toast('Расчёт не прошёл', { text: err?.message || 'Движок не ответил', kind: 'bad' });
+}
+
+/**
+ * Связка трёх представлений. Ради неё всё и затевалось: вариант под
+ * курсором — хоть точка на графике, хоть строка таблицы — мгновенно
+ * показывает, каким путём по сети он получен.
  */
 function setHovered(route) {
   state.hovered = route;
   map.showRoute(route || state.solution.recommended);
   renderNetworkMeta();
+  if (optionsMode === 'chart') table.setHot(route ? route.id : null);
+  else pareto.setHot(route ? route.id : null);
 }
 
 // ---------------------------------------------------------------------
@@ -240,6 +357,8 @@ function renderVerdict() {
     `срок ${fmt.hoursShort(req.deadlineH)}`,
   ].join('  ·  ');
 
+  el('verdict').classList.toggle('verdict--flat', flat);
+  el('verdict').classList.remove('is-stale');
   el('verdict').innerHTML = `
     <div class="verdict__top">
       <div>
@@ -264,9 +383,10 @@ function renderVerdict() {
 
     ${routeStrip(rec)}
 
-    ${noneFeasible ? `<p class="warnline">Ни один вариант не укладывается в
-      ${fmt.hoursShort(req.deadlineH)}. Показан лучший из непроходящих — увеличьте
-      срок или разбейте партию.</p>` : ''}
+    ${noneFeasible ? `<p class="warnline">
+      <span class="warnline__ico" aria-hidden="true">!</span>
+      <span>Ни один вариант не укладывается в ${fmt.hoursShort(req.deadlineH)}.
+      Показан лучший из непроходящих — увеличьте срок или разбейте партию.</span></p>` : ''}
 
     <div class="why" id="why">
       <h2 class="why__title">Почему так</h2>
@@ -474,6 +594,16 @@ function clockEmit() {
   for (const fn of clockSubs) fn(clock);
 }
 
+/**
+ * Вкладку свернули или экран погас — браузер перестаёт выдавать кадры, и
+ * часы встают сами. Без этого обработчика кнопка продолжала бы врать
+ * «Пауза», а при возврате сцена прыгнула бы вперёд на всё время отсутствия:
+ * такт считается от реального времени, а не от числа кадров.
+ */
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && clock.running) clockPause();
+});
+
 // ---------------------------------------------------------------------
 //  Статус модели под пороговой кривой
 // ---------------------------------------------------------------------
@@ -507,6 +637,9 @@ function rollNumber(node, target, from, format) {
   };
   requestAnimationFrame(tick);
 }
+
+const ICON_ALERT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+  stroke-linecap="round"><path d="M12 8v5"/><path d="M12 16.5h.01"/><circle cx="12" cy="12" r="9"/></svg>`;
 
 // Объявлены функциями, а не стрелками: модуль вызывает recompute() на
 // верхнем уровне, до этих строк, и const попал бы во временную мёртвую зону.
