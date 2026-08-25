@@ -60,26 +60,26 @@ export function createSummary(root) {
 
     root.innerHTML = `
       <div class="month">
-        <div class="month__figures">
-          <div class="figure">
-            <span class="figure__label">Отправок</span>
-            <span class="figure__value">${fmt.num(month.shipments)}</span>
+        <div class="stats stats--four">
+          <div class="stat">
+            <span class="stat__label">Отправок</span>
+            <span class="stat__value">${fmt.num(month.shipments)}</span>
           </div>
-          <div class="figure figure--stop">
-            <span class="figure__label">Фур не поехало</span>
-            <span class="figure__value">${fmt.num(month.trucksAvoided)}</span>
+          <div class="stat stat--bad">
+            <span class="stat__label">Фур не поехало</span>
+            <span class="stat__value">${fmt.num(month.trucksAvoided)}</span>
           </div>
-          <div class="figure figure--go">
-            <span class="figure__label">CO₂ не сожжено</span>
-            <span class="figure__value">${fmt.co2(month.co2SavedKg)}</span>
+          <div class="stat stat--good">
+            <span class="stat__label">CO2 не сожжено</span>
+            <span class="stat__value">${fmt.co2(month.co2SavedKg)}</span>
           </div>
-          <div class="figure figure--go">
-            <span class="figure__label">Сэкономлено</span>
-            <span class="figure__value">${fmt.kzt(month.kztSaved, { short: true })}</span>
+          <div class="stat stat--good">
+            <span class="stat__label">Сэкономлено</span>
+            <span class="stat__value">${fmt.kzt(month.kztSaved, { short: true })}</span>
           </div>
         </div>
 
-        <div class="chart chart--month">
+        <div class="chart">
           <svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img"
                aria-label="Фуры, не поехавшие по дням месяца">
             ${yTicks}

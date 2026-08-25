@@ -75,19 +75,19 @@ export function createStopping(root, {} = {}) {
     const dx = X(st.dispatchAtH);
 
     root.innerHTML = `
-      <div class="stop-wrap">
-        <div class="stop__figures">
-          <div class="figure figure--go">
-            <span class="figure__label">Соберём вагон в срок</span>
-            <span class="figure__value">${fmt.pct(Math.round(st.probability * 100))}</span>
+      <div class="stop">
+        <div class="stats stats--two">
+          <div class="stat stat--good">
+            <span class="stat__label">Соберём вагон в срок</span>
+            <span class="stat__value">${fmt.pct(Math.round(st.probability * 100))}</span>
           </div>
-          <div class="figure">
-            <span class="figure__label">Отправлять на часе</span>
-            <span class="figure__value">${fmt.hoursShort(st.dispatchAtH)}</span>
+          <div class="stat">
+            <span class="stat__label">Отправлять на часе</span>
+            <span class="stat__value">${fmt.hoursShort(st.dispatchAtH)}</span>
           </div>
         </div>
 
-        <div class="chart chart--stopping">
+        <div class="chart">
           <svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img"
                aria-label="Пороговая кривая: ждать, пока накопленный тоннаж ниже порога">
             <path class="thr-area-wait" d="${areaWait}"/>
@@ -110,7 +110,7 @@ export function createStopping(root, {} = {}) {
           </svg>
         </div>
 
-        <p class="stop__hint">Ждите, пока точка ниже кривой. Пересекла — отправляем.</p>
+        <p class="stop__hint">Пока точка <b>ниже жёлтой кривой</b> — выгоднее подождать попутный груз. Как только она её <b>пересекла</b> — отправляем вагон.</p>
       </div>`;
 
     dom = {

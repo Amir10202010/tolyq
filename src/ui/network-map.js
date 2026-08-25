@@ -16,12 +16,11 @@
 
 import * as fmt from './format.js';
 
-// Поля вокруг карты держат подписи городов внутри кадра. Самая длинная
-// подпись справа — «Достык», слева — «Актау», отсюда и 60 px на широком
-// экране. На узком поле ужимаются, а лишние подписи вообще снимаются.
+// Поля вокруг карты оставляют место подписям городов по краям. На узком
+// экране поля ужимаются, а те подписи, которым места не хватило, снимает
+// раскладчик ниже.
 const PAD_Y = 30;
 const padX = w => Math.min(60, Math.max(24, w * 0.1));
-const COMPACT_W = 460;
 const OFFSET = 2.2;            // разведение параллельных рёбер, px
 const R_NODE = 3.6;
 const R_HUB  = 5.0;
@@ -151,16 +150,16 @@ export function createNetworkMap(root, { onNodeHover } = {}) {
     }
 
     // --- подписи городов ------------------------------------------------
-    //  На узком экране двенадцать подписей превращаются в кашу и лезут за
-    //  край кадра. Тогда оставляем только те, что на маршруте, — остальные
-    //  город называет по наведению.
-    const compact = w < COMPACT_W;
+    //  Рисуем все, а раскладываем после отрисовки: реальные размеры текста
+    //  до вставки в документ неизвестны. Подпись, которой не нашлось места,
+    //  снимается — город назовёт всплывающая подсказка по наведению.
+    const labelPlan = [];
     for (const n of net.nodes) {
       const p = P(n.id);
       if (!p) continue;
       const on = onRoute.has(n.id) || n.id === ends.from || n.id === ends.to || hoverId === n.id;
-      if (compact && !on) continue;
       const [dx, dy, anchor] = LABEL_HINT[n.id] || [9, 4, 'start'];
+      labelPlan.push({ id: n.id, p, on, hub: n.hub });
       parts.push(`<text class="net-label${on ? ' net-label--on' : ''}" data-label="${n.id}"
         x="${(p.x + dx).toFixed(1)}" y="${(p.y + dy).toFixed(1)}"
         text-anchor="${anchor}">${n.name}</text>`);
@@ -173,7 +172,7 @@ export function createNetworkMap(root, { onNodeHover } = {}) {
       const hours = transshipHours(route);
       parts.push(`<g class="net-marker">
         <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="9"/>
-        <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.4" fill="var(--wait)" stroke="none"/>
+        <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.4" fill="var(--warn)" stroke="none"/>
       </g>
       <text class="net-marker-label" x="${(p.x + 13).toFixed(1)}" y="${(p.y - 8).toFixed(1)}">перегрузка, ${fmt.hoursShort(hours)}</text>`);
     }
@@ -191,6 +190,8 @@ export function createNetworkMap(root, { onNodeHover } = {}) {
             aria-label="Граф транспортной сети Казахстана: ${net.nodes.length} узлов, ${net.edges.length} рёбер">
          ${parts.join('')}
        </svg>` + legendHtml();
+
+    layoutLabels(root.querySelector('svg'), labelPlan, w, h);
 
     // --- наведение на узел ------------------------------------------------
     const svg = root.querySelector('svg');
@@ -211,6 +212,64 @@ export function createNetworkMap(root, { onNodeHover } = {}) {
     }
   }
 }
+
+// ---------------------------------------------------------------------
+//  РАССТАНОВКА ПОДПИСЕЙ
+//  Сколько места займёт текст, до вставки в документ неизвестно, поэтому
+//  раскладываем по факту. Каждой подписи пробуем несколько положений;
+//  если ни одно не влезло без наложения — снимаем её совсем. Города на
+//  маршруте идут первыми и место получают всегда.
+// ---------------------------------------------------------------------
+const PLACEMENTS = [
+  [  9,   4, 'start'],
+  [ -9,   4, 'end'],
+  [  0, -10, 'middle'],
+  [  0,  15, 'middle'],
+  [  9, -7,  'start'],
+  [ -9, -7,  'end'],
+];
+
+function layoutLabels(svg, plan, w, h) {
+  if (!svg) return;
+
+  // сперва города маршрута, потом узлы перегрузки, потом остальные
+  const order = plan.slice().sort((a, b) =>
+    (a.on ? 0 : a.hub ? 1 : 2) - (b.on ? 0 : b.hub ? 1 : 2));
+
+  const taken = [];
+  for (const item of order) {
+    const node = svg.querySelector(`[data-label="${item.id}"]`);
+    if (!node) continue;
+
+    let placed = false;
+    for (const [dx, dy, anchor] of candidatesFor(item)) {
+      node.setAttribute('x', (item.p.x + dx).toFixed(1));
+      node.setAttribute('y', (item.p.y + dy).toFixed(1));
+      node.setAttribute('text-anchor', anchor);
+
+      const b = pad(node.getBBox());
+      if (b.x < 1 || b.y < 1 || b.x + b.width > w - 1 || b.y + b.height > h - 1) continue;
+      if (taken.some(t => overlaps(t, b))) continue;
+
+      taken.push(b);
+      placed = true;
+      break;
+    }
+    if (!placed) node.remove();
+  }
+}
+
+/** Сначала выверенное вручную положение, затем запасные. */
+function candidatesFor(item) {
+  const hint = LABEL_HINT[item.id];
+  return hint ? [hint, ...PLACEMENTS] : PLACEMENTS;
+}
+
+const pad = b => ({ x: b.x - 2, y: b.y - 1.5, width: b.width + 4, height: b.height + 3 });
+
+const overlaps = (a, b) =>
+  a.x < b.x + b.width && b.x < a.x + a.width &&
+  a.y < b.y + b.height && b.y < a.y + a.height;
 
 // ---------------------------------------------------------------------
 //  Проекция

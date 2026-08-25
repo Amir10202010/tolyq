@@ -35,7 +35,7 @@ export function createForm(root, { initial, onChange }) {
   }
 
   cargoBox.innerHTML = Object.entries(CARGO_TYPES).map(([id, name], i) => `
-    <label class="segmented__item">
+    <label class="segment__item">
       <input type="radio" name="cargoType" value="${id}"${i === 0 ? ' checked' : ''}>
       <span>${shortCargo(name)}</span>
     </label>`).join('');
@@ -201,10 +201,9 @@ export function createForm(root, { initial, onChange }) {
   function paintWeights() {
     for (const k of WEIGHT_KEYS) {
       const v = Number(sliders[k].value);
-      outputs[k].innerHTML = `${v}<span class="unit">%</span>`;
-      // заливка дорожки до бегунка — видно вклад, не только положение
-      sliders[k].style.background =
-        `linear-gradient(to right, ${trackColor(k)} ${v}%, transparent ${v}%)`;
+      outputs[k].innerHTML = `${v}<i>%</i>`;
+      // долю заливки дорожки забирает CSS через --fill
+      sliders[k].style.setProperty('--fill', v + '%');
     }
   }
 
@@ -228,11 +227,6 @@ const numberOf = (node, fallback) => {
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
-function trackColor(key) {
-  return key === 'cost' ? 'rgba(53,184,126,.28)'
-       : key === 'time' ? 'rgba(86,174,201,.28)'
-       :                  'rgba(232,169,61,.28)';
-}
 
 /** «Генеральный груз» в сегмент шириной 90 px не влезает. */
 function shortCargo(name) {

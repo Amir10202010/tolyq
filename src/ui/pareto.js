@@ -14,7 +14,7 @@
 import * as fmt from './format.js';
 
 const M = { top: 18, right: 18, bottom: 36, left: 62 };
-const R_MIN = 3.4, R_MAX = 11.5;
+const R_MIN = 4.2, R_MAX = 13;
 
 export function createPareto(root, { onHover } = {}) {
   const tip = document.getElementById('pareto-tip');
@@ -65,7 +65,7 @@ export function createPareto(root, { onHover } = {}) {
     if (!w) return;
 
     const { solution: sol, request: req } = data;
-    const h = Math.round(Math.min(430, Math.max(268, w * 0.74)));
+    const h = Math.round(Math.min(480, Math.max(272, w * 0.80)));
 
     const points = [
       ...sol.dominated.map(r => ({ r, kind: 'dim' })),
@@ -273,11 +273,11 @@ export function createPareto(root, { onHover } = {}) {
 
 function legendHtml() {
   return `<div class="legend">
-    <span class="legend__item"><i class="legend__swatch legend__swatch--rec"></i>рекомендация</span>
-    <span class="legend__item"><i class="legend__swatch legend__swatch--front"></i>на фронте</span>
-    <span class="legend__item"><i class="legend__swatch legend__swatch--base"></i>как везут сегодня</span>
-    <span class="legend__item"><i class="legend__swatch legend__swatch--dim"></i>отброшено</span>
-    <span class="legend__item"><i class="legend__swatch legend__swatch--cross"></i>не в срок</span>
+    <span class="legend__item"><i class="legend__dot legend__dot--rec"></i>рекомендация</span>
+    <span class="legend__item"><i class="legend__dot legend__dot--front"></i>неулучшаемый</span>
+    <span class="legend__item"><i class="legend__dot legend__dot--base"></i>как везут сегодня</span>
+    <span class="legend__item"><i class="legend__dot legend__dot--dim"></i>отброшен</span>
+    <span class="legend__item"><i class="legend__cross"></i>не успевает</span>
   </div>`;
 }
 

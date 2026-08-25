@@ -42,6 +42,9 @@ const state = {
   hovered: null,          // маршрут под курсором: связка Парето ↔ карта
 };
 
+const el = id => document.getElementById(id);
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
 // ---------------------------------------------------------------------
 //  ЧАСЫ ДЕМО — одни на всю сцену
 //  Полоса загрузки, пороговая кривая и счётчики читают этот такт. Свой
@@ -60,9 +63,6 @@ const clock = {
 };
 const clockSubs = [];
 const onClock = fn => clockSubs.push(fn);
-
-const el = id => document.getElementById(id);
-const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // ---------------------------------------------------------------------
 //  Сборка
@@ -96,8 +96,7 @@ function recompute(request) {
   state.demo = buildDemo(state.solution, request);
   state.hovered = null;   // маршруты пересобрались, старая ссылка протухла
 
-  renderMasthead();
-  renderRecommend();
+  renderVerdict();
   pareto.update(state.solution, state.request);
 
   map.update(engine.getNetwork(), state.request);
@@ -109,11 +108,12 @@ function recompute(request) {
   stopping.update(ctx);
   summary.update(state.month);
 
-  el('loadbar-meta').textContent =
-    `вместимость ${fmt.tons(state.demo.capacityTons)} · ${fmt.num(state.demo.capacityM3)} м³`;
+  const sol = state.solution;
+  el('pareto-meta').textContent =
+    `${sol.pareto.length} из ${sol.considered ?? (sol.pareto.length + sol.dominated.length)}`;
+  el('loadbar-meta').textContent = `вагон ${fmt.tons(state.demo.capacityTons)}`;
   el('stopping-meta').textContent = `горизонт ${fmt.hoursShort(state.demo.horizonH)}`;
-  el('month-meta').textContent =
-    `средняя загрузка ${fmt.pct(state.month.avgFillPct)}`;
+  el('month-meta').textContent = `загрузка ${fmt.pct(state.month.avgFillPct)}`;
 
   clockReset();
 }
@@ -127,6 +127,147 @@ function setHovered(route) {
   map.showRoute(route || state.solution.recommended);
   renderNetworkMeta();
 }
+
+// ---------------------------------------------------------------------
+//  РЕШЕНИЕ
+//  Первое, что видит человек, — готовый ответ. Маршрут показан лентой
+//  слева направо: так плечи и перегрузка читаются с одного взгляда,
+//  а не собираются в голове из списка строк.
+// ---------------------------------------------------------------------
+let lastSaving = 0;
+let explainToken = 0;
+
+function renderVerdict() {
+  const { request: req, solution: sol } = state;
+  const rec = sol.recommended;
+  const base = sol.truckBaseline;
+  const noneFeasible = !sol.pareto.some(r => r.feasible);
+  const flat = sol.savingKzt <= 0;
+
+  const costCut = base.costKzt > 0 ? Math.round(sol.savingKzt / base.costKzt * 100) : 0;
+  const co2Cut  = base.co2Kg  > 0 ? Math.round(sol.savingCo2Kg / base.co2Kg * 100) : 0;
+
+  const stats = [
+    ['Стоимость',      fmt.kzt(rec.costKzt)],
+    ['Срок',           fmt.hoursHuman(rec.hours)],
+    ['Выбросы',        fmt.co2(rec.co2Kg)],
+    ['Загрузка вагона', fmt.pct(rec.fillPct)],
+  ];
+
+  // Ответ должен быть виден вместе с вопросом, иначе цифры висят в воздухе
+  const ask = [
+    `${fmt.tons(req.tons, req.tons % 1 ? 1 : 0)} · ${engine.CARGO_TYPES[req.cargoType].toLowerCase()}`,
+    `${nameOf(req.from)} → ${nameOf(req.to)}`,
+    `срок ${fmt.hoursShort(req.deadlineH)}`,
+  ].join('  ·  ');
+
+  el('verdict').innerHTML = `
+    <div class="verdict__top">
+      <div>
+        <p class="verdict__eyebrow">${flat ? 'Лучшее из возможного' : 'Рекомендуем'}</p>
+        <h1 class="verdict__title">${esc(rec.label)}</h1>
+        <p class="verdict__ask">${esc(ask)}</p>
+        <ul class="verdict__stats">
+          ${stats.map(([k, v]) => `<li class="vstat">
+            <span class="vstat__k">${k}</span><span class="vstat__v">${v}</span></li>`).join('')}
+        </ul>
+      </div>
+
+      <div class="saving${flat ? ' saving--flat' : ''}">
+        <p class="saving__label">${flat ? 'Дешевле фуры вариантов нет' : 'Экономия против выделенной фуры'}</p>
+        <p class="saving__value" id="saving-value">${fmt.kzt(Math.max(0, sol.savingKzt))}</p>
+        ${flat ? '' : `<div class="saving__chips">
+          <span class="badge badge--good">−${costCut} % к цене</span>
+          <span class="badge badge--good">−${co2Cut} % выбросов</span>
+        </div>`}
+      </div>
+    </div>
+
+    ${routeStrip(rec)}
+
+    ${noneFeasible ? `<p class="warnline">Ни один вариант не укладывается в
+      ${fmt.hoursShort(req.deadlineH)}. Показан лучший из непроходящих — увеличьте
+      срок или разбейте партию.</p>` : ''}
+
+    <div class="why" id="why">
+      <h2 class="why__title">Почему так</h2>
+      <p class="why__text">${esc(sol.explanation)}</p>
+    </div>`;
+
+  rollNumber(el('saving-value'), Math.max(0, sol.savingKzt), lastSaving, v => fmt.kzt(v));
+  lastSaving = Math.max(0, sol.savingKzt);
+
+  // Полный разбор приходит асинхронно: движок может ходить в сеть.
+  // До его прихода в блоке уже стоит живой текст, а не заглушка.
+  const token = ++explainToken;
+  explainSolution(sol, req).then(res => {
+    if (token !== explainToken) return;
+    const box = el('why');
+    if (!box || !res.paragraphs?.length) return;
+    box.innerHTML = `<h2 class="why__title">Почему так</h2>` +
+      res.paragraphs.map(p => `<p class="why__text">${p}</p>`).join('');
+  }).catch(() => { /* остаётся текст движка — этого достаточно */ });
+}
+
+/** Лента маршрута: города — точками, плечи — линиями между ними. */
+function routeStrip(route) {
+  const legs = route.legs || [];
+  if (!legs.length) return '';
+
+  const stops = [legs[0].from, ...legs.map(l => l.to)];
+  const transferAt = new Set(legs.filter(l => l.transshipment).map(l => l.from));
+  const shipH = transshipHours(route);
+
+  const parts = [];
+  stops.forEach((id, i) => {
+    const isEnd = i === 0 || i === stops.length - 1;
+    const isTransfer = transferAt.has(id);
+    parts.push(`<li class="route__node${isEnd ? ' route__node--end' : ''}${isTransfer ? ' route__node--transfer' : ''}">
+      <span class="route__track"><i class="route__dot"></i></span>
+      <span class="route__label">${nameOf(id)}
+        ${isTransfer ? `<em class="route__badge">перегрузка ${fmt.hoursShort(shipH)}</em>` : ''}
+      </span>
+    </li>`);
+
+    const leg = legs[i];
+    if (leg) {
+      parts.push(`<li class="route__link route__link--${leg.mode}">
+        <span class="route__track"><i class="route__line"></i></span>
+        <span class="route__meta"><b>${leg.mode === 'rail' ? 'Железная дорога' : 'Автотранспорт'}</b>
+          ${fmt.km(leg.km)} · ${fmt.hoursShort(leg.hours)}</span>
+      </li>`);
+    }
+  });
+
+  return `<ol class="route" aria-label="Состав маршрута">${parts.join('')}</ol>`;
+}
+
+/**
+ * Стоянку на перегрузку берём как разницу между итогом маршрута и суммой
+ * плеч. Если движок уже зашил её внутрь leg.hours, разница будет нулевой —
+ * тогда показываем константу, но строки всё равно сойдутся с итогом.
+ */
+function transshipHours(route) {
+  const legSum = route.legs.reduce((s, l) => s + l.hours, 0);
+  const count = route.legs.filter(l => l.transshipment).length || 1;
+  const diff = (route.hours - legSum) / count;
+  return diff > 0.05 ? diff : engine.CONSTANTS.TRANSSHIP_H;
+}
+
+function renderNetworkMeta() {
+  const net = engine.getNetwork();
+  const shown = state.hovered || state.solution.recommended;
+  el('network-meta').textContent = `${net.nodes.length} городов`;
+  el('network-sub').textContent = state.hovered
+    ? 'Маршрут точки под курсором'
+    : 'Маршрут из рекомендации';
+  el('network-note').innerHTML = shown
+    ? `Сейчас показан <b>«${esc(shown.label)}»</b> — ${fmt.km(shown.km ?? legKm(shown))},
+       ${fmt.hoursShort(shown.hours)}. Сплошная линия — железная дорога, штриховая — автодорога.`
+    : 'Сплошная линия — железная дорога, штриховая — автодорога.';
+}
+
+const legKm = r => r.legs.reduce((s, l) => s + l.km, 0);
 
 // ---------------------------------------------------------------------
 //  ДАННЫЕ СЦЕНЫ СБОРКИ
@@ -254,128 +395,6 @@ function clockEmit() {
   for (const fn of clockSubs) fn(clock);
 }
 
-function renderNetworkMeta() {
-  const net = engine.getNetwork();
-  const shown = state.hovered || state.solution.recommended;
-  el('network-meta').textContent =
-    `${net.nodes.length} узлов · ${net.edges.length} рёбер`;
-  el('network-note').innerHTML = shown
-    ? `Показан маршрут <b>«${esc(shown.label)}»</b>: ${fmt.km(shown.km ?? legKm(shown))},
-       ${fmt.hoursShort(shown.hours)}. Сплошные линии — железная дорога, штриховые — автодороги.`
-    : 'Сплошные линии — железная дорога, штриховые — автодороги.';
-}
-
-const legKm = r => r.legs.reduce((s, l) => s + l.km, 0);
-
-// ---------------------------------------------------------------------
-//  Шапка
-// ---------------------------------------------------------------------
-function renderMasthead() {
-  const { request: req, solution: sol } = state;
-
-  el('corridor-from').textContent = nameOf(req.from);
-  el('corridor-to').textContent   = nameOf(req.to);
-  el('corridor-rest').textContent = [
-    fmt.tons(req.tons, req.tons % 1 ? 1 : 0),
-    fmt.num(req.volumeM3) + ' м³',
-    engine.CARGO_TYPES[req.cargoType].toLowerCase(),
-    'срок ' + fmt.hoursShort(req.deadlineH),
-  ].join(' · ');
-
-  const flat = sol.savingKzt <= 0;
-  el('headline').classList.toggle('headline--flat', flat);
-  el('headline-co2').textContent = flat
-    ? 'дешевле уже некуда'
-    : '−' + fmt.co2(sol.savingCo2Kg) + ' CO₂';
-
-  rollNumber(el('headline-kzt'), Math.max(0, sol.savingKzt), v => fmt.kzt(v));
-
-  el('pareto-meta').textContent =
-    `${sol.pareto.length} на фронте из ${sol.considered ?? (sol.pareto.length + sol.dominated.length)}`;
-  el('request-meta').textContent = 'пересчёт живой';
-}
-
-// ---------------------------------------------------------------------
-//  Рекомендация
-// ---------------------------------------------------------------------
-let explainToken = 0;
-
-function renderRecommend() {
-  const { request: req, solution: sol } = state;
-  const rec = sol.recommended;
-  const noneFeasible = !sol.pareto.some(r => r.feasible);
-
-  // Стоянку на перегрузку берём как разницу между итогом маршрута и суммой
-  // плеч. Если движок уже зашил её внутрь leg.hours, разница будет нулевой —
-  // тогда печатаем строку без часов, но строки всё равно сойдутся с итогом.
-  const legSum = rec.legs.reduce((s, l) => s + l.hours, 0);
-  const shipCount = rec.legs.filter(l => l.transshipment).length;
-  const shipH = shipCount ? (rec.hours - legSum) / shipCount : 0;
-
-  const legs = rec.legs.map(l => {
-    const rows = [];
-    if (l.transshipment) {
-      rows.push(`<div class="leg leg--transship">
-        <span class="leg__pin"><i></i></span>
-        <span class="leg__text">Перегрузка в узле ${nameOf(l.from)}</span>
-        <span class="leg__num">${shipH > 0.05 ? fmt.hoursShort(shipH) : ''}</span>
-      </div>`);
-    }
-    rows.push(`<div class="leg leg--${l.mode}">
-      <span class="leg__pin"><i></i></span>
-      <span class="leg__text"><b>${nameOf(l.from)} — ${nameOf(l.to)}</b>,
-        ${l.mode === 'rail' ? 'железная дорога' : 'автотранспорт'}</span>
-      <span class="leg__num">${fmt.km(l.km)} · ${fmt.hoursShort(l.hours)}</span>
-    </div>`);
-    return rows.join('');
-  }).join('');
-
-  el('recommend-meta').textContent = rec.multimodal ? 'мультимодальный' : 'один вид транспорта';
-
-  el('recommend-body').innerHTML = `
-    <div class="rec">
-      <p class="rec__label">${esc(rec.label)}</p>
-
-      <div class="rec__figures">
-        <div class="figure figure--go">
-          <span class="figure__label">Стоимость</span>
-          <span class="figure__value">${fmt.kzt(rec.costKzt)}</span>
-        </div>
-        <div class="figure">
-          <span class="figure__label">Срок</span>
-          <span class="figure__value">${fmt.hoursHuman(rec.hours)}</span>
-        </div>
-        <div class="figure">
-          <span class="figure__label">Выбросы</span>
-          <span class="figure__value">${fmt.co2(rec.co2Kg)}</span>
-        </div>
-      </div>
-
-      <div class="rec__legs">${legs}</div>
-
-      ${noneFeasible ? `<p class="rec__warn">Ни один вариант не укладывается в
-         ${fmt.hoursShort(req.deadlineH)}. Показан лучший из непроходящих —
-         увеличьте срок или разбейте партию.</p>` : ''}
-
-      <div class="why" id="why">
-        <div class="why__head"><h3 class="why__title">Почему так</h3></div>
-        <p class="why__text">${esc(sol.explanation)}</p>
-      </div>
-    </div>`;
-
-  // Полный разбор приходит асинхронно: движок может ходить в сеть.
-  // До его прихода в блоке уже стоит живой текст, а не заглушка.
-  const token = ++explainToken;
-  explainSolution(sol, req).then(res => {
-    if (token !== explainToken) return;
-    const box = el('why');
-    if (!box || !res.paragraphs?.length) return;
-    box.innerHTML =
-      `<div class="why__head"><h3 class="why__title">Почему так</h3></div>` +
-      res.paragraphs.map(p => `<p class="why__text">${p}</p>`).join('');
-  }).catch(() => { /* остаётся текст движка — этого достаточно */ });
-}
-
 // ---------------------------------------------------------------------
 //  Статус модели под пороговой кривой
 // ---------------------------------------------------------------------
@@ -392,31 +411,22 @@ function renderModelNote() {
 //  Мелочи
 // ---------------------------------------------------------------------
 
-/** Число в шапке не подменяется, а доезжает: видно, что оно поменялось. */
-function rollNumber(node, target, format) {
-  const from = Number(node.dataset.value || 0);
-  node.dataset.value = String(target);
-  if (REDUCED || Math.abs(target - from) < 1) {
-    node.textContent = format(target);
-    return;
-  }
-  node.textContent = format(target);   // итог проставляем сразу: если кадры
-                                       // не идут (вкладка не отрисовывается),
+/** Число не подменяется, а доезжает: видно, что оно поменялось. */
+function rollNumber(node, target, from, format) {
+  if (!node) return;
+  node.textContent = format(target);   // итог сразу: если кадры не идут,
                                        // на экране всё равно верное число
+  if (REDUCED || Math.abs(target - from) < 1) return;
+
   const t0 = performance.now();
   const dur = 420;
   const tick = now => {
     const k = Math.min(1, (now - t0) / dur);
     const e = 1 - Math.pow(1 - k, 3);
     node.textContent = format(from + (target - from) * e);
-    if (k < 1 && node.dataset.value === String(target)) requestAnimationFrame(tick);
+    if (k < 1 && node.isConnected) requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);
-}
-
-function stub(id, text) {
-  const node = el(id);
-  if (node) node.innerHTML = `<p class="stub">${text}</p>`;
 }
 
 // Объявлены функциями, а не стрелками: модуль вызывает recompute() на

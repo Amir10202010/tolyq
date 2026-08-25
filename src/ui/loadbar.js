@@ -80,31 +80,31 @@ export function createLoadbar(root, { controls }) {
 
     root.innerHTML = `
       <div class="load">
-        <div class="load__top">
-          <button class="btn btn--go" type="button" data-act="run">Запустить</button>
-          <button class="btn" type="button" data-act="reset">Сбросить</button>
-          <span class="load__clock" data-role="clock"></span>
+        <div class="runbar">
+          <button class="btn btn--primary" type="button" data-act="run">Запустить</button>
+          <button class="btn btn--ghost" type="button" data-act="reset">Сбросить</button>
+          <span class="runbar__clock" data-role="clock"></span>
         </div>
 
         <div class="wagon" data-role="wagon"></div>
 
-        <div class="load__counters">
-          <div class="counter counter--wait">
-            <span class="counter__label">Накоплено в вагоне</span>
-            <span class="counter__value" data-role="c-tons">0 т</span>
+        <div class="stats">
+          <div class="stat stat--warn">
+            <span class="stat__label">Накоплено в вагоне</span>
+            <span class="stat__value" data-role="c-tons">0 т</span>
           </div>
-          <div class="counter counter--stop">
-            <span class="counter__label">Фур не поехало</span>
-            <span class="counter__value" data-role="c-trucks">0</span>
+          <div class="stat stat--bad">
+            <span class="stat__label">Фур не поехало</span>
+            <span class="stat__value" data-role="c-trucks">0</span>
           </div>
-          <div class="counter counter--go">
-            <span class="counter__label">CO₂ не сожжено</span>
-            <span class="counter__value" data-role="c-co2">0 кг</span>
+          <div class="stat stat--good">
+            <span class="stat__label">CO2 не сожжено</span>
+            <span class="stat__value" data-role="c-co2">0 кг</span>
           </div>
         </div>
 
-        <p class="load__done" data-role="done" hidden></p>
-        <div class="load__feed" data-role="feed"></div>
+        <p class="done" data-role="done" hidden></p>
+        <div class="feed" data-role="feed"></div>
       </div>`;
 
     const q = r => root.querySelector(`[data-role="${r}"]`);
@@ -129,15 +129,20 @@ export function createLoadbar(root, { controls }) {
   /** Силуэт вагона строится один раз; дальше двигается только обрезка. */
   function drawWagon(cap) {
     const w = Math.max(260, dom.wagon.clientWidth || root.clientWidth || 480);
-    const PADX = 10, BODY_Y = 20, BODY_H = 58, ROOF = 7;
-    const h = BODY_Y + BODY_H + 34;
+    const PADX = 10, BODY_Y = 24, BODY_H = 60, ROOF = 8;
     const bx = PADX + 14, bw = w - PADX * 2 - 28;
+
+    const R = 5;                       // скругление кузова
+    const BOT = BODY_Y + BODY_H;       // низ кузова
+    const AXLE = BOT + 11;             // ось колёсных пар
+    const SCALE_Y = AXLE + 15;         // шкала тоннажа — ПОД колёсами,
+    const h = SCALE_Y + 18;            // иначе цифры лезут на тележки
 
     const ticks = [];
     for (let t = 0; t <= cap; t += cap / 4) {
       const x = bx + (t / cap) * bw;
-      ticks.push(`<line class="wagon-tick" x1="${x.toFixed(1)}" y1="${BODY_Y + BODY_H}" x2="${x.toFixed(1)}" y2="${BODY_Y + BODY_H + 6}"/>
-        <text class="wagon-tick-text" x="${x.toFixed(1)}" y="${BODY_Y + BODY_H + 17}" text-anchor="${t === 0 ? 'start' : t >= cap ? 'end' : 'middle'}">${Math.round(t)}</text>`);
+      ticks.push(`<line class="wagon-tick" x1="${x.toFixed(1)}" y1="${SCALE_Y - 5}" x2="${x.toFixed(1)}" y2="${SCALE_Y}"/>
+        <text class="wagon-tick-text" x="${x.toFixed(1)}" y="${SCALE_Y + 11}" text-anchor="${t === 0 ? 'start' : t >= cap ? 'end' : 'middle'}">${Math.round(t)}</text>`);
     }
 
     dom.wagon.innerHTML = `
@@ -145,30 +150,35 @@ export function createLoadbar(root, { controls }) {
            aria-label="Загрузка вагона, вместимость ${cap} тонн">
         <defs>
           <clipPath id="tolyq-fill"><rect data-role="clip" x="${bx}" y="${BODY_Y}" width="0" height="${BODY_H}"/></clipPath>
+          <clipPath id="tolyq-body"><rect x="${bx}" y="${BODY_Y}" width="${bw}" height="${BODY_H}" rx="${R}"/></clipPath>
         </defs>
 
-        <!-- крыша и рама -->
-        <path class="wagon-frame" d="M ${bx - 6} ${BODY_Y} L ${bx + 4} ${BODY_Y - ROOF} L ${bx + bw - 4} ${BODY_Y - ROOF} L ${bx + bw + 6} ${BODY_Y}"/>
-        <rect class="wagon-body" x="${bx}" y="${BODY_Y}" width="${bw}" height="${BODY_H}"/>
+        <!-- тележки: рисуем первыми, кузов их перекроет -->
+        ${[bx + bw * 0.17, bx + bw * 0.29, bx + bw * 0.71, bx + bw * 0.83]
+          .map(cx => `<circle class="wagon-wheel" cx="${cx.toFixed(1)}" cy="${AXLE}" r="6"/>`).join('')}
+        <line class="wagon-frame" x1="${(bx + bw * 0.17).toFixed(1)}" y1="${AXLE}" x2="${(bx + bw * 0.29).toFixed(1)}" y2="${AXLE}"/>
+        <line class="wagon-frame" x1="${(bx + bw * 0.71).toFixed(1)}" y1="${AXLE}" x2="${(bx + bw * 0.83).toFixed(1)}" y2="${AXLE}"/>
 
-        <!-- груз -->
-        <g clip-path="url(#tolyq-fill)" data-role="segments"></g>
+        <!-- крыша с небольшим свесом -->
+        <path class="wagon-frame" d="M ${bx - 7} ${BODY_Y + 1} L ${bx + 5} ${BODY_Y - ROOF} L ${bx + bw - 5} ${BODY_Y - ROOF} L ${bx + bw + 7} ${BODY_Y + 1}"/>
 
-        <!-- дверные стойки поверх груза: это всё-таки вагон -->
-        <line class="wagon-frame" x1="${(bx + bw / 2 - 16).toFixed(1)}" y1="${BODY_Y}" x2="${(bx + bw / 2 - 16).toFixed(1)}" y2="${BODY_Y + BODY_H}"/>
-        <line class="wagon-frame" x1="${(bx + bw / 2 + 16).toFixed(1)}" y1="${BODY_Y}" x2="${(bx + bw / 2 + 16).toFixed(1)}" y2="${BODY_Y + BODY_H}"/>
-        <rect class="wagon-frame" x="${bx}" y="${BODY_Y}" width="${bw}" height="${BODY_H}" fill="none"/>
+        <!-- кузов и груз внутри него -->
+        <rect class="wagon-body" x="${bx}" y="${BODY_Y}" width="${bw}" height="${BODY_H}" rx="${R}"/>
+        <g clip-path="url(#tolyq-body)">
+          <g clip-path="url(#tolyq-fill)" data-role="segments"></g>
+        </g>
 
-        <!-- тележки -->
-        ${[bx + bw * 0.16, bx + bw * 0.30, bx + bw * 0.70, bx + bw * 0.84]
-          .map(cx => `<circle class="wagon-wheel" cx="${cx.toFixed(1)}" cy="${BODY_Y + BODY_H + 6}" r="5"/>`).join('')}
+        <!-- дверной проём поверх груза: это всё-таки вагон, а не полоса -->
+        <line class="wagon-rib" x1="${(bx + bw / 2 - 20).toFixed(1)}" y1="${BODY_Y + 3}" x2="${(bx + bw / 2 - 20).toFixed(1)}" y2="${BOT - 3}"/>
+        <line class="wagon-rib" x1="${(bx + bw / 2 + 20).toFixed(1)}" y1="${BODY_Y + 3}" x2="${(bx + bw / 2 + 20).toFixed(1)}" y2="${BOT - 3}"/>
+        <rect class="wagon-frame" x="${bx}" y="${BODY_Y}" width="${bw}" height="${BODY_H}" rx="${R}" fill="none"/>
 
-        <!-- порог оптимальной остановки прямо на полосе -->
-        <line class="wagon-thr" data-role="thr" x1="0" y1="${BODY_Y - 4}" x2="0" y2="${BODY_Y + BODY_H + 4}"/>
-        <text class="wagon-cap-text" data-role="thr-text" x="0" y="${BODY_Y - 9}" text-anchor="middle">порог</text>
+        <!-- порог оптимальной остановки прямо на кузове -->
+        <line class="wagon-thr" data-role="thr" x1="0" y1="${BODY_Y - 3}" x2="0" y2="${BOT + 3}"/>
+        <text class="wagon-cap-text" data-role="thr-text" x="0" y="${BODY_Y - 11}" text-anchor="middle">порог</text>
 
         ${ticks.join('')}
-        <text class="wagon-cap-text" x="${(bx + bw).toFixed(1)}" y="${BODY_Y - 9}" text-anchor="end">вместимость ${cap} т</text>
+        <text class="wagon-cap-text" x="${(bx + bw).toFixed(1)}" y="${BODY_Y - 11}" text-anchor="end">вместимость ${cap} т</text>
       </svg>`;
 
     dom.geom = { bx, bw, BODY_Y, BODY_H, cap };
@@ -253,7 +263,7 @@ export function createLoadbar(root, { controls }) {
     rect.setAttribute('y', BODY_Y);
     rect.setAttribute('width', Math.max(0, w).toFixed(1));
     rect.setAttribute('height', BODY_H);
-    rect.setAttribute('fill', a.mine ? 'var(--go)' : `var(${SHIP_COLORS[a.index % SHIP_COLORS.length]})`);
+    rect.setAttribute('fill', a.mine ? 'var(--good)' : `var(${SHIP_COLORS[a.index % SHIP_COLORS.length]})`);
     dom.segments.appendChild(rect);
   }
 
