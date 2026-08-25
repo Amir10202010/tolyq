@@ -77,14 +77,19 @@ export function createStopping(root, {} = {}) {
 
     root.innerHTML = `
       <div class="stop">
+        <!-- Сначала ответ словами, потом числа, которыми он подкреплён.
+             Двух голых процентов человеку недостаточно, чтобы понять,
+             что от него, собственно, хотят. -->
+        <p class="lede">Ждите попутный груз до <b>${fmt.hoursShort(st.dispatchAtH)}</b>, потом отправляйте.</p>
+
         <div class="stats stats--two">
-          <div class="stat stat--good">
-            <span class="stat__label">Соберём вагон в срок</span>
-            <span class="stat__value">${fmt.pct(Math.round(st.probability * 100))}</span>
+          <div class="stat">
+            <span class="stat__label">Отправка на часе</span>
+            <span class="stat__value">${fmt.hoursShort(st.dispatchAtH)}</span>
           </div>
           <div class="stat">
-            <span class="stat__label">Отправлять на часе</span>
-            <span class="stat__value">${fmt.hoursShort(st.dispatchAtH)}</span>
+            <span class="stat__label">Успеем собрать</span>
+            <span class="stat__value">${fmt.pct(Math.round(st.probability * 100))}</span>
           </div>
         </div>
 
@@ -111,7 +116,8 @@ export function createStopping(root, {} = {}) {
           </svg>
         </div>
 
-        <p class="stop__hint">Пока точка <b>ниже жёлтой кривой</b> — выгоднее подождать попутный груз. Как только она её <b>пересекла</b> — отправляем вагон.</p>
+        <p class="stop__hint"><span>Точка <b>ниже кривой</b> — ждём попутный груз.
+          <b>Пересекла</b> — отправляем.</span></p>
       </div>`;
 
     dom = {

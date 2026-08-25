@@ -19,6 +19,12 @@ import * as fmt from './format.js';
 const SHIP_COLORS = ['--ship-1', '--ship-2', '--ship-3', '--ship-4', '--ship-5', '--ship-6'];
 const EASE = 0.14;               // сглаживание налива, доля за кадр
 
+// Пустая лента объясняет, что произойдёт и что для этого нажать, — пустой
+// прямоугольник на её месте выглядел бы поломкой.
+const FEED_EMPTY =
+  '<p class="feed__empty">Пока пусто. Запустите сборку — сюда будут ' +
+  'приходить попутные заявки.</p>';
+
 export function createLoadbar(root, { controls }) {
   let ctx = null;                // { request, solution, demo }
   let dom = null;
@@ -69,7 +75,9 @@ export function createLoadbar(root, { controls }) {
     seenKeys = new Set();
     departed = false;
     if (dom) {
-      dom.feed.innerHTML = '';
+      dom.feed.innerHTML = FEED_EMPTY;
+      dom.feedCount.textContent = '';
+      dom.feedWrap.open = false;
       dom.segments.innerHTML = '';
       dom.done.hidden = true;
       dom.wagon.classList.remove('is-departed');
@@ -94,36 +102,47 @@ export function createLoadbar(root, { controls }) {
 
     root.innerHTML = `
       <div class="load">
+        <!-- Главное действие экрана. Название говорит, что произойдёт,
+             а не «Запустить» вообще что-то. «Сбросить» намеренно тихая:
+             две одинаково заметные кнопки — это уже выбор, которого мы
+             от человека не хотим. -->
         <div class="runbar">
-          <button class="btn btn--primary" type="button" data-act="run">Запустить</button>
-          <button class="btn btn--ghost" type="button" data-act="reset">Сбросить</button>
+          <button class="btn btn--primary btn--lg" type="button" data-act="run">Показать сборку вагона</button>
+          <button class="btn btn--quiet" type="button" data-act="reset">Сбросить</button>
           <span class="runbar__clock" data-role="clock"></span>
         </div>
 
         <div class="wagon" data-role="wagon"></div>
 
         <div class="stats">
-          <div class="stat stat--warn">
-            <span class="stat__label">Накоплено в вагоне</span>
+          <div class="stat">
+            <span class="stat__label">Накоплено</span>
             <span class="stat__value" data-role="c-tons">0 т</span>
           </div>
-          <div class="stat stat--bad">
+          <div class="stat">
             <span class="stat__label">Фур не поехало</span>
             <span class="stat__value" data-role="c-trucks">0</span>
           </div>
-          <div class="stat stat--good">
+          <div class="stat">
             <span class="stat__label">CO2 не сожжено</span>
             <span class="stat__value" data-role="c-co2">0 кг</span>
           </div>
         </div>
 
         <p class="done" data-role="done" hidden></p>
-        <div class="feed" data-role="feed"></div>
+
+        <!-- Поимённый список попутчиков — это доказательство, а не ответ.
+             Ответ уже дан числами выше, поэтому список свёрнут. -->
+        <details class="more" data-role="feed-wrap">
+          <summary class="more__head">Кто подсел в вагон<span class="more__count" data-role="feed-count"></span></summary>
+          <div class="feed" data-role="feed"></div>
+        </details>
       </div>`;
 
     const q = r => root.querySelector(`[data-role="${r}"]`);
     dom = {
       wagon: q('wagon'), feed: q('feed'), clock: q('clock'), done: q('done'),
+      feedWrap: q('feed-wrap'), feedCount: q('feed-count'),
       cTons: q('c-tons'), cTrucks: q('c-trucks'), cCo2: q('c-co2'),
       run: root.querySelector('[data-act="run"]'),
     };
@@ -192,7 +211,9 @@ export function createLoadbar(root, { controls }) {
         <text class="wagon-cap-text" data-role="thr-text" x="0" y="${BODY_Y - 11}" text-anchor="middle">порог</text>
 
         ${ticks.join('')}
-        <text class="wagon-cap-text" x="${(bx + bw).toFixed(1)}" y="${BODY_Y - 11}" text-anchor="end">вместимость ${cap} т</text>
+        <!-- Вместимость подписана плашкой в заголовке раздела, второй раз
+             её здесь не пишем: на нулевом часе порог стоит у самого края
+             кузова, и две подписи наезжали друг на друга. -->
       </svg>`;
 
     dom.geom = { bx, bw, BODY_Y, BODY_H, cap };
@@ -216,7 +237,9 @@ export function createLoadbar(root, { controls }) {
     for (const a of state.arrived) {
       if (seenKeys.has(a.key)) continue;
       seenKeys.add(a.key);
+      dom.feed.querySelector('.feed__empty')?.remove();
       dom.feed.appendChild(offerCard(a));
+      dom.feedCount.textContent = seenKeys.size;
       if (a.accepted) addSegment(a);
       dom.feed.scrollTop = dom.feed.scrollHeight;
     }
@@ -254,7 +277,9 @@ export function createLoadbar(root, { controls }) {
       `час <b>${String(Math.floor(h)).padStart(2, '0')}</b> из ${demo.horizonH}` +
       ` · загрузка <b>${fmt.pct(Math.round(shownTons / cap * 100))}</b>`;
 
-    dom.run.textContent = clock.running ? 'Пауза' : clock.finished ? 'Ещё раз' : 'Запустить';
+    dom.run.textContent = clock.running ? 'Пауза'
+                        : clock.finished ? 'Показать ещё раз'
+                        : 'Показать сборку вагона';
 
     // --- отправка -----------------------------------------------------------
     if (state.departed && !departed) {
@@ -262,8 +287,8 @@ export function createLoadbar(root, { controls }) {
       dom.wagon.classList.add('is-departed');
       dom.done.hidden = false;
       dom.done.textContent =
-        `Порог пройден на ${fmt.hoursShort(demo.dispatchAtH)}: вагон уходит с ${fmt.tons(state.tons)} ` +
-        `при вместимости ${cap} т. ${fmt.withPlural(state.trucks, 'фура', 'фуры', 'фур')} не поехали.`;
+        `Вагон ушёл на ${fmt.hoursShort(demo.dispatchAtH)} с ${fmt.tons(state.tons)} из ${cap} т. ` +
+        `${fmt.withPlural(state.trucks, 'фура', 'фуры', 'фур')} остались в гараже.`;
     }
   }
 
@@ -277,18 +302,25 @@ export function createLoadbar(root, { controls }) {
     rect.setAttribute('y', BODY_Y);
     rect.setAttribute('width', Math.max(0, w).toFixed(1));
     rect.setAttribute('height', BODY_H);
-    rect.setAttribute('fill', a.mine ? 'var(--good)' : `var(${SHIP_COLORS[a.index % SHIP_COLORS.length]})`);
+    rect.setAttribute('fill', a.mine ? 'var(--accent)' : `var(${SHIP_COLORS[a.index % SHIP_COLORS.length]})`);
     dom.segments.appendChild(rect);
   }
 
+  /**
+   * Строка ленты, а не плашка: заявки читаются списком сверху вниз, как
+   * журнал приёмки. Точка слева окрашена в тот же цвет, что и доля этого
+   * отправителя в вагоне — по ней видно, чей это груз.
+   */
   function offerCard(a) {
     const div = document.createElement('div');
     div.className = 'offer' + (a.accepted ? (a.mine ? ' offer--mine' : '') : ' offer--rejected');
-    if (a.accepted && !a.mine) {
-      div.style.borderLeftColor = `var(${SHIP_COLORS[a.index % SHIP_COLORS.length]})`;
-    }
+
+    const tint = a.mine ? 'var(--accent)'
+               : a.accepted ? `var(${SHIP_COLORS[a.index % SHIP_COLORS.length]})`
+               : '';
     div.innerHTML =
-      `<span class="offer__name">${esc(a.shipper)}</span>
+      `<i class="offer__dot"${tint ? ` style="background:${tint}"` : ''} aria-hidden="true"></i>
+       <span class="offer__name">${esc(a.shipper)}${a.mine ? ' — ваш груз' : ''}</span>
        <span class="offer__num">${fmt.tons(a.tons)} · ${fmt.num(a.volumeM3)} м³ · ${fmt.hoursShort(a.atH)}</span>
        ${a.accepted ? '' : `<span class="offer__reason">${esc(a.reason || 'не прошла упаковку')}</span>`}`;
     return div;

@@ -108,15 +108,12 @@ function setOptionsMode(mode) {
   optionsMode = mode;
   el('options-chart').hidden = mode !== 'chart';
   el('options-table').hidden = mode !== 'table';
-  document.querySelector('.card--pareto').classList.toggle('is-wide', mode === 'table');
+  document.querySelector('.panel--options').classList.toggle('is-wide', mode === 'table');
   for (const b of el('options-switch').querySelectorAll('.switch__btn')) {
     b.setAttribute('aria-selected', String(b.dataset.mode === mode));
   }
-  el('pareto-note').innerHTML = mode === 'chart'
-    ? `Вправо — дольше, вверх — дороже, крупнее точка — больше выбросов.
-       Наведите на точку: увидите её маршрут на карте справа.`
-    : `Щёлкните заголовок столбца, чтобы отсортировать.
-       Наведите на строку: увидите её маршрут на карте справа.`;
+  // Инструкции под графиком больше нет: оси подписаны, легенда рядом,
+  // а двадцать слов мелким шрифтом человек всё равно не читал.
   if (mode === 'chart') pareto.update(state.solution, state.request);
   else table.update(state.solution, state.request);
 }
@@ -145,7 +142,7 @@ function applyView() {
   for (const s of document.querySelectorAll('.view')) {
     s.classList.toggle('is-active', s.dataset.view === v);
   }
-  for (const a of document.querySelectorAll('.nav__tab')) {
+  for (const a of document.querySelectorAll('.nav__item')) {
     if (a.dataset.view === v) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   }
@@ -184,14 +181,30 @@ function refreshView(v) {
 window.addEventListener('hashchange', applyView);
 
 // ---------------------------------------------------------------------
-//  Заявка на узком экране: свёрнута в строку, разворачивается кнопкой
+//  ЗАЯВКА
+//  Форма свёрнута на любой ширине, а не только на телефоне. Открывший
+//  продукт впервые должен увидеть ответ, а не четырнадцать полей ввода;
+//  кто пришёл править заявку — жмёт «Изменить» и получает их все сразу.
 // ---------------------------------------------------------------------
 const aside = el('aside');
 const asideToggle = el('aside-toggle');
-asideToggle.addEventListener('click', () => {
-  const open = aside.classList.toggle('is-open');
+
+function setAsideOpen(open) {
+  aside.classList.toggle('is-open', open);
   asideToggle.setAttribute('aria-expanded', String(open));
   asideToggle.textContent = open ? 'Свернуть' : 'Изменить';
+}
+
+asideToggle.addEventListener('click', () => {
+  setAsideOpen(!aside.classList.contains('is-open'));
+});
+
+// «Посчитать свою заявку» с последнего шага — это та же форма. Отдельного
+// экрана она не заслуживает, поэтому просто открываем её и подводим фокус.
+el('try-own')?.addEventListener('click', () => {
+  setAsideOpen(true);
+  aside.scrollIntoView({ block: 'start', behavior: REDUCED ? 'auto' : 'smooth' });
+  el('f-free').focus({ preventScroll: true });
 });
 
 // ---------------------------------------------------------------------
@@ -258,10 +271,11 @@ function recompute(request) {
     stopping.update(ctx);
     summary.update(state.month);
 
+    // «Неулучшаемый» — слово из теории Парето, а не из речи грузоотправителя.
     const considered = sol.considered ?? (sol.pareto.length + sol.dominated.length);
     el('pareto-meta').textContent =
-      `${considered} ${fmt.plural(considered, 'вариант', 'варианта', 'вариантов')} перебрано, ` +
-      `${sol.pareto.length} ${fmt.plural(sol.pareto.length, 'неулучшаемый', 'неулучшаемых', 'неулучшаемых')}`;
+      `Перебрали ${considered} ${fmt.plural(considered, 'вариант', 'варианта', 'вариантов')} — ` +
+      `вот из чего стоит выбирать`;
     el('loadbar-meta').textContent = `вагон ${fmt.tons(state.demo.capacityTons)}`;
     el('stopping-meta').textContent = `горизонт ${fmt.hoursShort(state.demo.horizonH)}`;
     el('month-meta').textContent = `загрузка ${fmt.pct(state.month.avgFillPct)}`;
@@ -287,10 +301,9 @@ function setBusy(on) {
   box.classList.toggle('is-stale', on);
   el('f-reset').classList.toggle('is-busy', on);
 
-  const why = el('why');
-  if (!why) return;
-  if (on) {
-    why.innerHTML = `<h2 class="why__title">Почему так</h2>
+  const body = el('why')?.querySelector('.why__body');
+  if (on && body) {
+    body.innerHTML = `
       <div class="skeleton skeleton--line"></div>
       <div class="skeleton skeleton--line"></div>
       <div class="skeleton skeleton--line"></div>`;
@@ -340,58 +353,63 @@ function renderVerdict() {
   const noneFeasible = !sol.pareto.some(r => r.feasible);
   const flat = sol.savingKzt <= 0;
 
-  const costCut = base.costKzt > 0 ? Math.round(sol.savingKzt / base.costKzt * 100) : 0;
-  const co2Cut  = base.co2Kg  > 0 ? Math.round(sol.savingCo2Kg / base.co2Kg * 100) : 0;
+  const co2Cut = base.co2Kg > 0 ? Math.round(sol.savingCo2Kg / base.co2Kg * 100) : 0;
 
+  // Три числа, а не четыре. Загрузка вагона — величина для логиста, а не
+  // для того, кто первый раз смотрит на ответ; она ушла в разбор ниже.
   const stats = [
-    ['Стоимость',      fmt.kzt(rec.costKzt)],
-    ['Срок',           fmt.hoursHuman(rec.hours)],
-    ['Выбросы',        fmt.co2(rec.co2Kg)],
-    ['Загрузка вагона', fmt.pct(rec.fillPct)],
+    ['Цена',    fmt.kzt(rec.costKzt)],
+    ['Срок',    fmt.hoursHuman(rec.hours)],
+    ['Выбросы', fmt.co2(rec.co2Kg)],
   ];
 
-  // Ответ должен быть виден вместе с вопросом, иначе цифры висят в воздухе
-  const ask = [
-    `${fmt.tons(req.tons, req.tons % 1 ? 1 : 0)} · ${engine.CARGO_TYPES[req.cargoType].toLowerCase()}`,
-    `${nameOf(req.from)} → ${nameOf(req.to)}`,
-    `срок ${fmt.hoursShort(req.deadlineH)}`,
-  ].join('  ·  ');
+  // Строки «что за груз» здесь больше нет: ровно те же слова стоят в
+  // сводке заявки слева, а она теперь видна всегда. Повторять их под
+  // заголовком — значит заставлять читать одно и то же дважды.
 
   el('verdict').classList.toggle('verdict--flat', flat);
   el('verdict').classList.remove('is-stale');
+  // Ответ, экономия, числа, лента и разбор идут одной колонкой, разделённой
+  // линейками. Коробок тут нет намеренно: решение — это и есть страница,
+  // заворачивать её в карточку не во что.
   el('verdict').innerHTML = `
-    <div class="verdict__top">
-      <div>
-        <p class="verdict__eyebrow">${flat ? 'Лучшее из возможного' : 'Рекомендуем'}</p>
+    <div class="verdict__head">
+      <div class="verdict__answer">
+        <p class="verdict__eyebrow">
+          <i class="dot dot--${flat ? 'warn' : 'good'}" aria-hidden="true"></i>
+          ${flat ? 'Лучшее из возможного' : 'Рекомендуем'}
+        </p>
         <h1 class="verdict__title">${esc(rec.label)}</h1>
-        <p class="verdict__ask">${esc(ask)}</p>
-        <ul class="verdict__stats">
-          ${stats.map(([k, v]) => `<li class="vstat">
-            <span class="vstat__k">${k}</span><span class="vstat__v">${v}</span></li>`).join('')}
-        </ul>
       </div>
 
-      <div class="saving${flat ? ' saving--flat' : ''}">
-        <p class="saving__label">${flat ? 'Дешевле фуры вариантов нет' : 'Экономия против выделенной фуры'}</p>
-        <p class="saving__value" id="saving-value">${fmt.kzt(Math.max(0, sol.savingKzt))}</p>
-        ${flat ? '' : `<div class="saving__chips">
-          <span class="badge badge--good">−${costCut} % к цене</span>
-          <span class="badge badge--good">−${co2Cut} % выбросов</span>
-        </div>`}
+      <div class="verdict__saving">
+        <p class="micro">${flat ? 'Дешевле фуры вариантов нет' : 'Дешевле обычной фуры на'}</p>
+        <p class="verdict__amount" id="saving-value">${fmt.kzt(Math.max(0, sol.savingKzt))}</p>
+        ${flat ? '' : `<p class="verdict__deltas">
+          <span class="delta delta--good">и на ${co2Cut} % меньше выбросов</span>
+        </p>`}
       </div>
+    </div>
+
+    <div class="stats">
+      ${stats.map(([k, v]) => `<div class="stat">
+        <span class="stat__label">${k}</span>
+        <span class="stat__value">${v}</span>
+      </div>`).join('')}
     </div>
 
     ${routeStrip(rec)}
 
     ${noneFeasible ? `<p class="warnline">
-      <span class="warnline__ico" aria-hidden="true">!</span>
       <span>Ни один вариант не укладывается в ${fmt.hoursShort(req.deadlineH)}.
       Показан лучший из непроходящих — увеличьте срок или разбейте партию.</span></p>` : ''}
 
-    <div class="why" id="why">
-      <h2 class="why__title">Почему так</h2>
-      <p class="why__text">${esc(sol.explanation)}</p>
-    </div>`;
+    <details class="why" id="why">
+      <summary class="why__title">Почему именно этот вариант</summary>
+      <div class="why__body">
+        <p class="why__text">${esc(sol.explanation)}</p>
+      </div>
+    </details>`;
 
   rollNumber(el('saving-value'), Math.max(0, sol.savingKzt), lastSaving, v => fmt.kzt(v));
   lastSaving = Math.max(0, sol.savingKzt);
@@ -401,10 +419,13 @@ function renderVerdict() {
   const token = ++explainToken;
   explainSolution(sol, req).then(res => {
     if (token !== explainToken) return;
-    const box = el('why');
-    if (!box || !res.paragraphs?.length) return;
-    box.innerHTML = `<h2 class="why__title">Почему так</h2>` +
-      res.paragraphs.map(p => `<p class="why__text">${p}</p>`).join('');
+    const body = el('why')?.querySelector('.why__body');
+    if (!body || !res.paragraphs?.length) return;
+    // Загрузка вагона живёт здесь: в разборе она объясняет цену, а строкой
+    // метрик наверху была просто четвёртым числом без применения.
+    body.innerHTML =
+      res.paragraphs.map(p => `<p class="why__text">${p}</p>`).join('') +
+      `<p class="why__aside">Вагон уходит заполненным на ${fmt.pct(rec.fillPct)}.</p>`;
   }).catch(() => { /* остаётся текст движка — этого достаточно */ });
 }
 
@@ -458,12 +479,13 @@ function renderNetworkMeta() {
   const shown = state.hovered || state.solution.recommended;
   el('network-meta').textContent = `${net.nodes.length} городов`;
   el('network-sub').textContent = state.hovered
-    ? 'Маршрут точки под курсором'
-    : 'Маршрут из рекомендации';
+    ? 'Вариант под курсором'
+    : 'Как поедет ваш груз';
+  // Про начертание линий не пишем: об этом говорит легенда прямо над сноской.
   el('network-note').innerHTML = shown
-    ? `Сейчас показан <b>«${esc(shown.label)}»</b> — ${fmt.km(shown.km ?? legKm(shown))},
-       ${fmt.hoursShort(shown.hours)}. Сплошная линия — железная дорога, штриховая — автодорога.`
-    : 'Сплошная линия — железная дорога, штриховая — автодорога.';
+    ? `<b>«${esc(shown.label)}»</b> — ${fmt.km(shown.km ?? legKm(shown))},
+       ${fmt.hoursShort(shown.hours)}`
+    : '';
 }
 
 const legKm = r => r.legs.reduce((s, l) => s + l.km, 0);

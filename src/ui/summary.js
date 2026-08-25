@@ -70,22 +70,23 @@ export function createSummary(root) {
 
     root.innerHTML = `
       <div class="month">
-        <div class="stats stats--four">
+        <!-- Итог фразой. Четыре числа сами по себе не складываются в
+             мысль — читателю пришлось бы делать это в уме. -->
+        <p class="lede">За месяц коридор сэкономил <b>${fmt.kzt(month.kztSaved, { short: true })}</b>
+          и снял с дорог <b>${fmt.withPlural(month.trucksAvoided, 'фуру', 'фуры', 'фур')}</b>.</p>
+
+        <div class="stats">
           <div class="stat">
             <span class="stat__label">Отправок</span>
             <span class="stat__value">${fmt.num(month.shipments)}</span>
           </div>
-          <div class="stat stat--bad">
+          <div class="stat">
             <span class="stat__label">Фур не поехало</span>
             <span class="stat__value">${fmt.num(month.trucksAvoided)}</span>
           </div>
-          <div class="stat stat--good">
+          <div class="stat">
             <span class="stat__label">CO2 не сожжено</span>
             <span class="stat__value">${fmt.co2(month.co2SavedKg)}</span>
-          </div>
-          <div class="stat stat--good">
-            <span class="stat__label">Сэкономлено</span>
-            <span class="stat__value">${fmt.kzt(month.kztSaved, { short: true })}</span>
           </div>
         </div>
 

@@ -269,18 +269,34 @@ const nameOf = id => NODES.find(n => n.id === id)?.name || id;
 // ---------------------------------------------------------------------
 /** @returns {Promise<{text: string, live: boolean}>} */
 export async function getModelInfo() {
+  // Сначала explain.js движка, если он это умеет...
   const mod = await core();
   if (mod && typeof mod.getModelInfo === 'function') {
-    try {
-      const info = await withTimeout(mod.getModelInfo(), 2000);
-      if (info) {
-        const text = info.text || composeModelText(info);
-        if (text) return { text, live: true };
-      }
-    } catch { /* падаем на шаблон */ }
+    const info = await tryInfo(() => mod.getModelInfo());
+    if (info) return info;
   }
-  // Демонстрационные показатели: движка ещё нет, индикатор слева серый.
+
+  // ...потом сам движок: показатели обученной модели он держит в solve.js
+  // под именем modelInfo. Форма совпадает, переименования достаточно.
+  const info = await tryInfo(async () => {
+    const solve = await import('../core/solve.js');
+    return typeof solve.modelInfo === 'function' ? solve.modelInfo() : solve.modelInfo;
+  });
+  if (info) return info;
+
+  // Движка нет вовсе — показываем демонстрационные числа, индикатор серый.
   return { text: composeModelText(DEMO_MODEL), live: false };
+}
+
+async function tryInfo(get) {
+  try {
+    const info = await withTimeout(get(), 2000);
+    if (!info) return null;
+    const text = info.text || composeModelText(info);
+    return text ? { text, live: true } : null;
+  } catch {
+    return null;
+  }
 }
 
 const DEMO_MODEL = { observations: 4320, corridors: 12 };

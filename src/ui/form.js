@@ -174,6 +174,9 @@ export function createForm(root, { initial, onChange }) {
                  : key === 'weights'   ? root.querySelector('.weights')
                  : fields[key]?.closest('.field');
       if (!node) continue;
+      // Объём и тип груза лежат в свёрнутом блоке. Подсветить поле,
+      // которого не видно, — то же самое, что не подсветить: раскрываем.
+      node.closest('details')?.setAttribute('open', '');
       node.classList.remove('is-parsed');
       void node.offsetWidth;           // перезапуск анимации
       node.classList.add('is-parsed');

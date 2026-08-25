@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>TOLYQ — чем, как и когда везти</title>
 <meta name="description" content="Система принятия решений для грузоотправителей Казахстана: мультимодальный фронт Парето и оптимальная остановка.">
+<meta name="color-scheme" content="light">
 
 <!-- Шрифты лежат рядом, в сеть приложение не ходит вообще. Взяты с Google
      Fonts, оставлены кириллица и латиница: казахские Қ, Ғ, Ә, Ү живут в
@@ -14,61 +15,76 @@
 <link rel="stylesheet" href="assets/fonts/fonts.css">
 <link rel="stylesheet" href="styles.css">
 
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230A0A0A'/%3E%3Crect x='5' y='10' width='22' height='11' rx='3' fill='none' stroke='%23707070' stroke-width='2'/%3E%3Crect x='7.5' y='12.5' width='11' height='6' rx='1.5' fill='%233ECF8E'/%3E%3Ccircle cx='11' cy='24' r='2.2' fill='%23707070'/%3E%3Ccircle cx='21' cy='24' r='2.2' fill='%23707070'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23FCFCFB'/%3E%3Crect x='5' y='10' width='22' height='11' rx='3' fill='none' stroke='%232F5573' stroke-width='2'/%3E%3Crect x='7.5' y='12.5' width='11' height='6' rx='1.5' fill='%232F5573'/%3E%3Ccircle cx='11' cy='24' r='2.2' fill='%238C8B84'/%3E%3Ccircle cx='21' cy='24' r='2.2' fill='%238C8B84'/%3E%3C/svg%3E">
 </head>
 <body>
 
 <a class="skip" href="#main">Перейти к содержимому</a>
 
-<!-- ================================================================
-     ШАПКА. Марка слева, вкладки по трём вопросам системы справа.
-     Вкладки — обычные ссылки: работает «назад» и адрес можно переслать.
-     ================================================================ -->
-<header class="topbar">
-  <div class="brand">
-    <svg class="brand__mark" viewBox="0 0 32 32" aria-hidden="true">
-      <rect x="4" y="9" width="24" height="12" rx="3.5" fill="none" stroke="currentColor" stroke-width="2"/>
-      <rect x="7" y="12" width="12" height="6" rx="1.5" fill="currentColor"/>
-      <circle cx="11" cy="24" r="2.3" fill="currentColor"/>
-      <circle cx="21" cy="24" r="2.3" fill="currentColor"/>
-    </svg>
-    <span class="brand__name">TOLYQ</span>
-  </div>
+<div class="app">
 
-  <nav class="nav" id="nav" aria-label="Разделы">
-    <a class="nav__tab" href="#/route"  data-view="route">
-      <span class="nav__num">1</span>Чем везти</a>
-    <a class="nav__tab" href="#/timing" data-view="timing">
-      <span class="nav__num">2</span>Когда отправлять</a>
-    <a class="nav__tab" href="#/impact" data-view="impact">
-      <span class="nav__num">3</span>Эффект за месяц</a>
-  </nav>
-</header>
+  <!-- ================================================================
+       БОКОВАЯ ПАНЕЛЬ. Марка, три раздела и заявка — в одной колонке.
+       Разделы — обычные ссылки на #/…: работает «назад», адрес можно
+       переслать. На узком экране разделы уезжают в нижнюю панель, а
+       заявка сворачивается под кнопку.
+       ================================================================ -->
+  <aside class="side" id="aside">
 
-<div class="shell">
-
-  <!-- ==============================================================
-       ЗАЯВКА — постоянная панель управления слева.
-       На телефоне сворачивается в одну строку с кнопкой «Изменить».
-       ============================================================== -->
-  <aside class="aside" id="aside">
-    <div class="aside__bar">
-      <div class="aside__sum">
-        <span class="aside__sum-k">Заявка</span>
-        <span class="aside__sum-v" id="aside-summary">—</span>
+    <div class="side__head">
+      <div class="side__brand">
+        <a class="brand" href="#/route">
+          <svg class="brand__mark" viewBox="0 0 32 32" aria-hidden="true">
+            <rect x="4" y="9" width="24" height="12" rx="3.5" fill="none" stroke="currentColor" stroke-width="2"/>
+            <rect x="7" y="12" width="12" height="6" rx="1.5" fill="currentColor"/>
+            <circle cx="11" cy="24" r="2.3" fill="currentColor"/>
+            <circle cx="21" cy="24" r="2.3" fill="currentColor"/>
+          </svg>
+          <span class="brand__name">TOLYQ</span>
+        </a>
       </div>
-      <button class="btn btn--ghost btn--sm" type="button" id="aside-toggle" aria-expanded="false" aria-controls="aside-body">Изменить</button>
+
+      <!-- Номера здесь не украшение: это порядок, в котором принимается
+           решение, — сначала чем везти, потом когда, потом что вышло.
+           Пояснений под пунктами нет намеренно: названия и так говорят,
+           что внутри, а три лишние строки мелкого текста в постоянно
+           видимой колонке стоят дороже, чем приносят. -->
+      <nav class="nav" id="nav" aria-label="Разделы">
+        <a class="nav__item" href="#/route" data-view="route">
+          <span class="nav__step">1</span>
+          <span class="nav__label">Чем везти</span>
+        </a>
+        <a class="nav__item" href="#/timing" data-view="timing">
+          <span class="nav__step">2</span>
+          <span class="nav__label">Когда отправлять</span>
+        </a>
+        <a class="nav__item" href="#/impact" data-view="impact">
+          <span class="nav__step">3</span>
+          <span class="nav__label">Эффект за месяц</span>
+        </a>
+      </nav>
     </div>
 
-    <div class="aside__body" id="aside-body">
+    <!-- Заявка видна всегда, форма — нет. Человек, открывший продукт
+         впервые, должен сначала увидеть ОТВЕТ, а не четырнадцать полей
+         ввода. Понадобится поправить — жмёт «Изменить». -->
+    <div class="req">
+      <p class="micro">Заявка</p>
+      <p class="req__sum" id="aside-summary">—</p>
+      <button class="btn btn--ghost btn--sm req__edit" type="button" id="aside-toggle"
+              aria-expanded="false" aria-controls="aside-body">Изменить</button>
+    </div>
+
+    <div class="side__body" id="aside-body">
+
       <form class="form" id="form" autocomplete="off">
         <!-- Свободный ввод. Разбирает explain.js → parseRequest().
-             Не разобрал — просто ничего не происходит. -->
+             Не разобрал — скажет об этом уведомлением, поля ниже работают. -->
         <div class="field field--free" id="field-free">
           <label class="label" for="f-free">Опишите груз своими словами</label>
           <textarea class="input input--area" id="f-free" rows="2"
                     placeholder="8 тонн продуктов из Астаны в Алматы, надо за двое суток"></textarea>
-          <p class="hint">Разберём и заполним поля ниже. Enter — применить</p>
+          <p class="hint">Заполним поля ниже сами</p>
         </div>
 
         <div class="field-row">
@@ -82,7 +98,7 @@
           </div>
         </div>
 
-        <div class="field-row field-row--three">
+        <div class="field-row">
           <div class="field">
             <label class="label" for="f-tons">Вес</label>
             <div class="input-unit">
@@ -91,14 +107,7 @@
             </div>
           </div>
           <div class="field">
-            <label class="label" for="f-volume">Объём</label>
-            <div class="input-unit">
-              <input class="input input--num" id="f-volume" name="volumeM3" type="number" min="1" max="138" step="1" value="52">
-              <span class="input-unit__suffix">м³</span>
-            </div>
-          </div>
-          <div class="field">
-            <label class="label" for="f-deadline">Срок</label>
+            <label class="label" for="f-deadline">Успеть за</label>
             <div class="input-unit">
               <input class="input input--num" id="f-deadline" name="deadlineH" type="number" min="6" max="240" step="1" value="48">
               <span class="input-unit__suffix">ч</span>
@@ -106,16 +115,33 @@
           </div>
         </div>
 
-        <fieldset class="field field--cargo">
-          <legend class="label">Что везём</legend>
-          <div class="segment" id="f-cargo" role="radiogroup" aria-label="Тип груза"></div>
-        </fieldset>
+        <!-- Объём и тип груза почти всегда остаются как есть: у обычной
+             партии объём считается по весу, а тип меняют только под
+             химию. Держать их наверху — значит просить человека принять
+             два решения, которых он принимать не собирался. -->
+        <details class="more">
+          <summary class="more__head">Объём и тип груза</summary>
+          <div class="more__body">
+            <div class="field">
+              <label class="label" for="f-volume">Объём</label>
+              <div class="input-unit">
+                <input class="input input--num" id="f-volume" name="volumeM3" type="number" min="1" max="138" step="1" value="52">
+                <span class="input-unit__suffix">м³</span>
+              </div>
+            </div>
+
+            <fieldset class="field field--cargo">
+              <legend class="label">Что везём</legend>
+              <div class="segment" id="f-cargo" role="radiogroup" aria-label="Тип груза"></div>
+            </fieldset>
+          </div>
+        </details>
 
         <!-- Ползунки приоритетов. Сумма всегда 100 %: двигаешь один,
              два других расходятся пропорционально. -->
         <fieldset class="field weights" id="weights">
           <legend class="label">Что для вас важнее</legend>
-          <p class="hint hint--top">Двигайте ползунки — рекомендация переезжает на другой вариант</p>
+          <p class="hint hint--top">Ответ меняется сразу</p>
 
           <div class="weight" data-key="cost">
             <label class="weight__name" for="w-cost">Деньги</label>
@@ -134,7 +160,8 @@
           </div>
         </fieldset>
 
-        <button class="btn btn--ghost btn--block" type="button" id="f-reset">Вернуть демо-сценарий</button>
+        <!-- Тихая: это откат, а не то, что человек пришёл сюда делать -->
+        <button class="btn btn--quiet btn--block" type="button" id="f-reset">Вернуть демо-сценарий</button>
       </form>
     </div>
   </aside>
@@ -142,8 +169,10 @@
   <main class="main" id="main">
 
     <!-- ============================================================
-         РЕШЕНИЕ. Закреплено над вкладками: ответ не должен исчезать
-         при переключении разделов.
+         РЕШЕНИЕ. Не карточка, а сама страница: ответ, числа, лента
+         маршрута и разбор словами, разделённые линейками. Закреплено
+         над разделами — при переключении меняются доказательства,
+         а не ответ.
          ============================================================ -->
     <section class="verdict" id="verdict" aria-live="polite" aria-label="Рекомендация"></section>
 
@@ -153,91 +182,121 @@
          подсвечивает её маршрут, врозь связка бессмысленна.
          ============================================================ -->
     <section class="view" data-view="route" aria-label="Чем везти">
-      <div class="row row--two">
-        <section class="card card--pareto">
-          <header class="card__head">
-            <h2 class="card__title">Варианты доставки</h2>
-            <p class="card__sub" id="pareto-meta">Каждая точка — способ довезти груз</p>
+      <div class="split">
+
+        <section class="panel panel--options">
+          <header class="panel__head">
+            <div class="panel__titles">
+              <h2 class="panel__title">Варианты доставки</h2>
+              <p class="panel__sub" id="pareto-meta">Каждая точка — способ довезти груз</p>
+            </div>
             <div class="switch" id="options-switch" role="tablist" aria-label="Представление вариантов">
               <button class="switch__btn" type="button" role="tab" data-mode="chart" aria-selected="true">График</button>
               <button class="switch__btn" type="button" role="tab" data-mode="table" aria-selected="false">Таблица</button>
             </div>
           </header>
 
-          <div class="card__chart" id="options-chart">
+          <div class="panel__plot" id="options-chart">
             <div class="chart" id="pareto-chart"></div>
             <div class="tip" id="pareto-tip" hidden></div>
           </div>
 
-          <div id="options-table" hidden></div>
-
-          <footer class="card__foot" id="pareto-note">
-            Вправо — дольше, вверх — дороже, крупнее точка — больше выбросов.
-            Наведите на точку: увидите её маршрут на карте справа.
-          </footer>
+          <div class="panel__table" id="options-table" hidden></div>
         </section>
 
-        <section class="card card--network">
-          <header class="card__head">
-            <h2 class="card__title">Маршрут на сети</h2>
-            <p class="card__sub" id="network-sub">Транспортная сеть Казахстана целиком</p>
-            <span class="badge badge--muted" id="network-meta"></span>
+        <section class="panel panel--network">
+          <header class="panel__head">
+            <div class="panel__titles">
+              <h2 class="panel__title">Маршрут на сети</h2>
+              <p class="panel__sub" id="network-sub">Транспортная сеть Казахстана целиком</p>
+            </div>
+            <span class="badge" id="network-meta"></span>
           </header>
-          <div class="card__chart">
+          <div class="panel__body">
             <div class="chart" id="network-chart"></div>
           </div>
-          <footer class="card__foot" id="network-note"></footer>
+          <footer class="panel__note" id="network-note"></footer>
         </section>
+
       </div>
+
+      <!-- Ответ получен — человек должен видеть, куда идти дальше, а не
+           догадываться, что разделов вообще три. -->
+      <nav class="next" aria-label="Следующий шаг">
+        <a class="btn btn--primary btn--lg" href="#/timing">Дальше: когда отправлять</a>
+        <span class="next__where">Шаг 1 из 3</span>
+      </nav>
     </section>
 
     <!-- ============================================================
          2. КОГДА ОТПРАВЛЯТЬ
          ============================================================ -->
     <section class="view" data-view="timing" aria-label="Когда отправлять">
-      <div class="row row--two">
-        <section class="card card--load" id="loadbar">
-          <header class="card__head">
-            <h2 class="card__title">Сборка вагона</h2>
-            <p class="card__sub">Пока вы ждёте, к грузу подсаживаются попутные партии</p>
-            <span class="badge badge--muted" id="loadbar-meta"></span>
+      <div class="split">
+
+        <section class="panel panel--load" id="loadbar">
+          <header class="panel__head">
+            <div class="panel__titles">
+              <h2 class="panel__title">Сборка вагона</h2>
+              <p class="panel__sub">Пока вы ждёте, к грузу подсаживаются попутные партии</p>
+            </div>
+            <span class="badge" id="loadbar-meta"></span>
           </header>
-          <div class="card__body" id="loadbar-body"></div>
+          <div class="panel__body" id="loadbar-body"></div>
         </section>
 
-        <section class="card card--stop" id="stopping">
-          <header class="card__head">
-            <h2 class="card__title">Порог отправки</h2>
-            <p class="card__sub">Ждать попутный груз или ехать сейчас</p>
-            <span class="badge badge--muted" id="stopping-meta"></span>
+        <section class="panel panel--stop" id="stopping">
+          <header class="panel__head">
+            <div class="panel__titles">
+              <h2 class="panel__title">Порог отправки</h2>
+              <p class="panel__sub">Ждать попутный груз или ехать сейчас</p>
+            </div>
+            <span class="badge" id="stopping-meta"></span>
           </header>
-          <div class="card__body" id="stopping-body"></div>
-          <footer class="card__foot model-note" id="model-note"></footer>
+          <div class="panel__body" id="stopping-body"></div>
+          <footer class="panel__note model-note" id="model-note"></footer>
         </section>
+
       </div>
+
+      <!-- Здесь «Дальше» вторична: главное действие этого экрана —
+           «Показать сборку вагона». Двух тёмных кнопок на экране быть
+           не должно, иначе главного действия снова нет. -->
+      <nav class="next" aria-label="Следующий шаг">
+        <a class="btn btn--ghost btn--lg" href="#/impact">Дальше: эффект за месяц</a>
+        <span class="next__where">Шаг 2 из 3</span>
+      </nav>
     </section>
 
     <!-- ============================================================
          3. ЭФФЕКТ ЗА МЕСЯЦ
          ============================================================ -->
     <section class="view" data-view="impact" aria-label="Эффект за месяц">
-      <section class="card card--month">
-        <header class="card__head">
-          <h2 class="card__title">Что это даёт за месяц</h2>
-          <p class="card__sub">Тридцать дней работы коридора по той же логике</p>
-          <span class="badge badge--muted" id="month-meta"></span>
+      <section class="panel panel--month">
+        <header class="panel__head">
+          <div class="panel__titles">
+            <h2 class="panel__title">Что это даёт за месяц</h2>
+            <p class="panel__sub">Тридцать дней работы коридора по той же логике</p>
+          </div>
+          <span class="badge" id="month-meta"></span>
         </header>
-        <div class="card__body" id="month-body"></div>
+        <div class="panel__body" id="month-body"></div>
       </section>
+
+      <!-- Последний шаг замыкает круг: попробовать на своей заявке -->
+      <nav class="next" aria-label="Следующий шаг">
+        <button class="btn btn--primary btn--lg" type="button" id="try-own">Посчитать свою заявку</button>
+        <span class="next__where">Шаг 3 из 3</span>
+      </nav>
     </section>
+
+    <footer class="foot">
+      <span>TOLYQ</span>
+      <span>Демонстрационный сценарий</span>
+    </footer>
 
   </main>
 </div>
-
-<footer class="footer">
-  <span>TOLYQ</span>
-  <span>Демонстрационный сценарий</span>
-</footer>
 
 <script type="module" src="src/ui/app.js"></script>
 </body>

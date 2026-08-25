@@ -175,7 +175,9 @@ export function createPareto(root, { onHover } = {}) {
     for (const key of ['base', 'rec']) {
       const n = nodes.find(v => v.kind === key);
       if (!n) continue;
-      const label = key === 'rec' ? 'рекомендуем' : 'как везут сегодня';
+      // Подписи набраны капителью и потому длинные не влезают: у опорной
+      // точки оставлено два слова, полная формулировка есть в подсказке.
+      const label = key === 'rec' ? 'рекомендуем' : 'везут сегодня';
       const wantsLeft = n.px > M.left + plotW * 0.42;
       const tx = wantsLeft ? n.px - n.pr - 7 : n.px + n.pr + 7;
       const ty = key === 'rec' ? n.py - n.pr - 7 : n.py + n.pr + 13;
@@ -242,9 +244,12 @@ export function createPareto(root, { onHover } = {}) {
       ${fmt.km(l.km)}, ${fmt.hoursShort(l.hours)}${l.transshipment ? ', с перегрузкой' : ''}</span></div>`).join('');
 
     let flag = '';
-    if (!r.feasible) flag = `<p class="tip__flag tip__flag--stop">не укладывается в срок</p>`;
+    // Кирпичный цвет — только у настоящего провала, то есть у срыва срока.
+    // «Как везут сегодня» — не ошибка, а точка отсчёта, и метится она
+    // цветом автодороги: тем же, что и сама точка на графике.
+    if (!r.feasible) flag = `<p class="tip__flag tip__flag--bad">не укладывается в срок</p>`;
     else if (r.id === sol.recommended.id) flag = `<p class="tip__flag tip__flag--go">рекомендуем</p>`;
-    else if (r.id === sol.truckBaseline.id) flag = `<p class="tip__flag tip__flag--stop">как везут сегодня</p>`;
+    else if (r.id === sol.truckBaseline.id) flag = `<p class="tip__flag tip__flag--base">как везут сегодня</p>`;
     else if (r.dominatedBy) {
       const by = findRoute(r.dominatedBy);
       flag = `<p class="tip__flag tip__flag--dim">хуже, чем «${esc(by ? by.label : r.dominatedBy)}», сразу по всем трём</p>`;
@@ -279,13 +284,20 @@ export function createPareto(root, { onHover } = {}) {
 
 // ---------------------------------------------------------------------
 
+/**
+ * Легенда написана словами грузоотправителя, а не теории Парето:
+ * «неулучшаемый» и «отброшен» — термины перебора, человеку они говорят
+ * ровно ничего. Ключ к размеру точки стоит здесь же — раньше он жил в
+ * двадцатисловной сноске под графиком, которую никто не читал.
+ */
 function legendHtml() {
   return `<div class="legend">
-    <span class="legend__item"><i class="legend__dot legend__dot--rec"></i>рекомендация</span>
-    <span class="legend__item"><i class="legend__dot legend__dot--front"></i>неулучшаемый</span>
-    <span class="legend__item"><i class="legend__dot legend__dot--base"></i>как везут сегодня</span>
-    <span class="legend__item"><i class="legend__dot legend__dot--dim"></i>отброшен</span>
+    <span class="legend__item"><i class="legend__dot legend__dot--rec"></i>наш выбор</span>
+    <span class="legend__item"><i class="legend__dot legend__dot--front"></i>тоже хорошие</span>
+    <span class="legend__item"><i class="legend__dot legend__dot--base"></i>так возят сейчас</span>
+    <span class="legend__item"><i class="legend__dot legend__dot--dim"></i>хуже по всему</span>
     <span class="legend__item"><i class="legend__cross"></i>не успевает</span>
+    <span class="legend__item"><i class="legend__size"></i>размер — выбросы</span>
   </div>`;
 }
 
