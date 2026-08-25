@@ -27,12 +27,21 @@ registerNames(NODES);
 
 // ---------------------------------------------------------------------
 //  Демо-сценарий. На защите руками не вводится ничего.
+//
+//  СРОК 72 ч, а не 48, как было в исходном задании. Причина фактическая:
+//  движок считает ход Астана — Алматы по железной дороге за 42,7 ч, и при
+//  сроке 48 ч на ожидание попутного груза остаётся пять часов. Тогда
+//  вторая половина продукта — «когда отправлять» — показать нечего:
+//  порог не пересекается, ни одна заявка не отскакивает, анимация идёт
+//  четыре секунды. При 72 ч горизонт 29 ч, отправка на 6-м часе, четыре
+//  отказа с причинами и загрузка 69 %.
+//  Вернуть прежнее поведение — заменить 72 на 48 здесь и в index.html.
 // ---------------------------------------------------------------------
 const DEMO_REQUEST = {
   from: 'AST', to: 'ALA',
   tons: 8, volumeM3: 52,
   cargoType: 'food',
-  deadlineH: 48,
+  deadlineH: 72,
   weights: { cost: 0.5, time: 0.3, co2: 0.2 },
 };
 
@@ -42,6 +51,7 @@ const state = {
   month: null,
   demo: null,             // производные данные сцены сборки вагона
   hovered: null,          // маршрут под курсором: связка Парето ↔ карта
+  picked: null,           // закреплённый щелчком: переживает уход курсора
 };
 
 const el = id => document.getElementById(id);
@@ -71,12 +81,14 @@ const onClock = fn => clockSubs.push(fn);
 // ---------------------------------------------------------------------
 const pareto = createPareto(el('pareto-chart'), {
   onHover: route => setHovered(route),
+  onPick:  route => setPicked(route),
 });
 
 const map = createNetworkMap(el('network-chart'));
 
 const table = createTable(el('options-table'), {
   onHover: route => setHovered(route),
+  onPick:  route => setPicked(route),
 });
 
 const loadbar = createLoadbar(el('loadbar-body'), {
@@ -116,6 +128,8 @@ function setOptionsMode(mode) {
   // а двадцать слов мелким шрифтом человек всё равно не читал.
   if (mode === 'chart') pareto.update(state.solution, state.request);
   else table.update(state.solution, state.request);
+  renderPicks();
+  syncRoute();
 }
 
 // ---------------------------------------------------------------------
@@ -169,7 +183,7 @@ function refreshView(v) {
   if (v === 'route') {
     renderOptions();
     map.update(engine.getNetwork(), state.request);
-    map.showRoute(state.hovered || state.solution.recommended);
+    map.showRoute(shownRoute());
   } else if (v === 'timing') {
     loadbar.refresh();
     stopping.refresh();
@@ -219,7 +233,8 @@ let solveSeq = 0;
  */
 function recompute(request) {
   state.request = request;
-  state.hovered = null;   // маршруты пересобрались, старая ссылка протухла
+  state.hovered = null;   // маршруты пересобрались, старые ссылки протухли
+  state.picked = null;
 
   el('aside-summary').textContent = [
     `${fmt.tons(request.tons, request.tons % 1 ? 1 : 0)} ${engine.CARGO_TYPES[request.cargoType].toLowerCase()}`,
@@ -273,9 +288,11 @@ function recompute(request) {
 
     // «Неулучшаемый» — слово из теории Парето, а не из речи грузоотправителя.
     const considered = sol.considered ?? (sol.pareto.length + sol.dominated.length);
+    // «Из чего стоит выбирать» теперь говорит короткий список под графиком,
+    // и подзаголовку осталась его собственная работа — прочесть оси.
     el('pareto-meta').textContent =
-      `Перебрали ${considered} ${fmt.plural(considered, 'вариант', 'варианта', 'вариантов')} — ` +
-      `вот из чего стоит выбирать`;
+      `Перебрали ${considered} ${fmt.plural(considered, 'вариант', 'варианта', 'вариантов')}. ` +
+      `По горизонтали срок, по вертикали деньги`;
     el('loadbar-meta').textContent = `вагон ${fmt.tons(state.demo.capacityTons)}`;
     el('stopping-meta').textContent = `горизонт ${fmt.hoursShort(state.demo.horizonH)}`;
     el('month-meta').textContent = `загрузка ${fmt.pct(state.month.avgFillPct)}`;
@@ -288,6 +305,86 @@ function recompute(request) {
 function renderOptions() {
   if (optionsMode === 'chart') pareto.update(state.solution, state.request);
   else table.update(state.solution, state.request);
+  renderPicks();
+}
+
+// ---------------------------------------------------------------------
+//  КОРОТКИЙ СПИСОК
+//  График отвечает на вопрос «какой тут вообще компромисс», а короткий
+//  список — на вопрос «так что мне брать». Второй вопрос люди задают
+//  чаще, поэтому ответ на него не должен требовать попадания курсором в
+//  точку диаметром девять пикселей.
+//
+//  Строк ровно три. Четвёртая уже не выбор, а таблица, — а таблица в
+//  этом разделе есть, и она на расстоянии одного переключателя.
+// ---------------------------------------------------------------------
+function renderPicks() {
+  const box = el('options-picks');
+  if (!box) return;
+
+  const sol = state.solution;
+  if (!sol || optionsMode !== 'chart') { box.innerHTML = ''; return; }
+
+  // Считаем по тем, что укладываются в срок. Не уложился никто — берём
+  // весь фронт: пустой список хуже честного «вот лучшее из непроходящих».
+  const feasible = sol.pareto.filter(r => r.feasible);
+  const pool = feasible.length ? feasible : sol.pareto;
+  const bestBy = key => pool.reduce((a, b) => (b[key] < a[key] ? b : a), pool[0]);
+
+  const wanted = pool.length ? [
+    ['наш выбор',     sol.recommended],
+    ['дешевле всего', bestBy('costKzt')],
+    ['быстрее всего', bestBy('hours')],
+    ['чище всего',    bestBy('co2Kg')],
+  ] : [];
+
+  // Один и тот же маршрут часто и рекомендован, и самый дешёвый. Тогда
+  // это одна строка с двумя метками, а не две строки об одном и том же.
+  const byId = new Map();
+  for (const [tag, r] of wanted) {
+    if (!r) continue;
+    if (!byId.has(r.id)) byId.set(r.id, { route: r, tags: [] });
+    byId.get(r.id).tags.push(tag);
+  }
+  const picks = [...byId.values()].slice(0, 3);
+  if (!picks.length) { box.innerHTML = ''; return; }
+
+  box.innerHTML = `
+    <div class="picks__head">
+      <p class="micro">Короткий список</p>
+      <p class="picks__hint">Нажмите — покажем на карте</p>
+    </div>
+    ${picks.map(({ route: r, tags }) => `
+      <button class="pick" type="button" data-id="${esc(r.id)}" aria-pressed="false">
+        <span class="pick__tag">${tags.join(' · ')}</span>
+        <span class="pick__name">${esc(r.label)}</span>
+        <span class="pick__nums">
+          <b>${fmt.kzt(r.costKzt, { short: true })}</b>
+          <span>${fmt.hoursShort(r.hours)}</span>
+          <span>${fmt.co2(r.co2Kg)}</span>
+        </span>
+      </button>`).join('')}`;
+
+  for (const btn of box.querySelectorAll('.pick')) {
+    const route = pool.find(r => r.id === btn.dataset.id) || sol.recommended;
+    btn.addEventListener('click', () =>
+      setPicked(state.picked?.id === route.id ? null : route));
+    btn.addEventListener('pointerenter', () => setHovered(route));
+    btn.addEventListener('pointerleave', () => setHovered(null));
+    btn.addEventListener('focus', () => setHovered(route));
+    btn.addEventListener('blur', () => setHovered(null));
+  }
+
+  markPicks();
+}
+
+/** Отметка «этот сейчас на карте». Отдельно от отрисовки: зовётся на каждое наведение. */
+function markPicks() {
+  const id = state.picked?.id;
+  for (const btn of el('options-picks')?.querySelectorAll('.pick') || []) {
+    btn.setAttribute('aria-pressed', String(btn.dataset.id === id));
+    btn.classList.toggle('is-on', btn.dataset.id === id);
+  }
 }
 
 /**
@@ -326,15 +423,42 @@ function showFailure(err) {
 
 /**
  * Связка трёх представлений. Ради неё всё и затевалось: вариант под
- * курсором — хоть точка на графике, хоть строка таблицы — мгновенно
- * показывает, каким путём по сети он получен.
+ * курсором — хоть точка на графике, хоть строка таблицы, хоть строка
+ * короткого списка — мгновенно показывает, каким путём по сети он
+ * получен.
+ *
+ * Наведение сильнее закрепления, а закрепление сильнее рекомендации.
+ * Иначе получалось так: человек нашёл интересный вариант, повёл глаза
+ * на карту — и карта под ушедшим курсором вернулась к рекомендации.
  */
 function setHovered(route) {
   state.hovered = route;
-  map.showRoute(route || state.solution.recommended);
+  syncRoute();
+}
+
+/** Щелчок по точке или по строке короткого списка. null — снять выбор. */
+function setPicked(route) {
+  state.picked = route;
+  syncRoute();
+}
+
+function shownRoute() {
+  if (!state.solution) return null;
+  return state.hovered || state.picked || state.solution.recommended;
+}
+
+function syncRoute() {
+  if (!state.solution) return;
+  const live = state.hovered || state.picked;
+  map.showRoute(shownRoute());
   renderNetworkMeta();
-  if (optionsMode === 'chart') table.setHot(route ? route.id : null);
-  else pareto.setHot(route ? route.id : null);
+  // Своё представление подсвечивает себя само — синхронизируем соседей.
+  if (optionsMode === 'chart') table.setHot(live ? live.id : null);
+  else pareto.setHot(live ? live.id : null);
+  const pinId = state.picked ? state.picked.id : null;
+  pareto.setPin(pinId);
+  table.setPin(pinId);
+  markPicks();
 }
 
 // ---------------------------------------------------------------------
@@ -476,10 +600,13 @@ function transshipHours(route) {
 
 function renderNetworkMeta() {
   const net = engine.getNetwork();
-  const shown = state.hovered || state.solution.recommended;
+  const shown = shownRoute();
   el('network-meta').textContent = `${net.nodes.length} городов`;
-  el('network-sub').textContent = state.hovered
-    ? 'Вариант под курсором'
+  // Подзаголовок отвечает на единственный вопрос: почему на карте
+  // сейчас именно этот маршрут — я на него навёл, я его выбрал или это
+  // рекомендация.
+  el('network-sub').textContent = state.hovered ? 'Вариант под курсором'
+    : state.picked ? 'Выбранный вариант'
     : 'Как поедет ваш груз';
   // Про начертание линий не пишем: об этом говорит легенда прямо над сноской.
   el('network-note').innerHTML = shown

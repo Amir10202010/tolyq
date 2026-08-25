@@ -7,28 +7,44 @@
 //  Оси начинаются от нуля осознанно: только так видно, что фура стоит
 //  вчетверо дороже вагона, а не «немного правее по шкале».
 //
+//  Обе шкалы «чем меньше, тем лучше» — а это читается не сразу: на
+//  привычных графиках вверх и вправо означает «больше и лучше». Поэтому
+//  в пустом левом нижнем углу стоит стрелка «лучше»: угол там пуст не
+//  случайно, самого дешёвого и одновременно самого быстрого варианта не
+//  бывает, и место под подсказку освобождается само.
+//
+//  Выбранный вариант ЗАКРЕПЛЯЕТСЯ щелчком. Наведение хорошо ровно до
+//  того момента, пока человек не захотел разглядеть маршрут на карте
+//  рядом: убрал курсор с точки — и подсветка пропала.
+//
 //  SVG рисуется в честных экранных пикселях (viewBox = размер контейнера),
 //  а не масштабируется. Иначе подписи на телефоне уезжают в 6 px.
 // =====================================================================
 
 import * as fmt from './format.js';
 
-const M = { top: 18, right: 18, bottom: 36, left: 62 };
-const R_MIN = 4.2, R_MAX = 13;
+const M = { top: 22, right: 20, bottom: 40, left: 64 };
+// Разброс радиусов сужен: прежние 4.2–13 px превращали фронт в россыпь
+// разнокалиберных клякс, и форма компромисса — то, ради чего график и
+// нужен, — терялась за перепадом размеров. Выбросы по-прежнему видно,
+// но они больше не главный сигнал на картинке.
+const R_MIN = 5, R_MAX = 9.5;
 
-export function createPareto(root, { onHover } = {}) {
+export function createPareto(root, { onHover, onPick } = {}) {
   const tip = document.getElementById('pareto-tip');
   if (tip && tip.parentElement !== root) root.appendChild(tip);
 
   let data = null;        // { solution, request }
-  let hotId = null;
+  let hotId = null;       // под курсором прямо сейчас
+  let pinId = null;       // закреплён щелчком и переживает уход курсора
+  let tipOn = false;      // карточка с числами: её показывает только наведение
   let frame = null;
   let geom = null;        // положение точек после последней отрисовки
 
   const ro = new ResizeObserver(() => schedule());
   ro.observe(root);
 
-  return { update, setHot, clear: () => setHot(null) };
+  return { update, setHot, setPin, clear: () => setHot(null) };
 
   // ------------------------------------------------------------------
 
@@ -36,6 +52,7 @@ export function createPareto(root, { onHover } = {}) {
   function update(solution, request) {
     data = { solution, request };
     if (hotId && !findRoute(hotId)) hotId = null;
+    if (pinId && !findRoute(pinId)) pinId = null;
     render();
   }
 
@@ -47,13 +64,34 @@ export function createPareto(root, { onHover } = {}) {
 
   function setHot(id, { showTip = false } = {}) {
     hotId = id;
+    tipOn = showTip && !!id;
+    paint();
+  }
+
+  /** Закрепление приходит и снаружи: коротким списком под графиком. */
+  function setPin(id) {
+    pinId = id;
+    paint();
+  }
+
+  /**
+   * Единственное место, где решается, что подсвечено. Наведение сильнее
+   * закрепления: пока курсор на точке, показываем её, а отпустили —
+   * возвращаемся к закреплённой, а не к пустоте.
+   *
+   * Карточка с числами привязана к наведению, а не к подсветке: висеть
+   * поверх графика постоянно она не должна — закрывает соседние точки.
+   */
+  function paint() {
     if (!geom) return;
+    const liveId = hotId || pinId;
     for (const g of geom.nodes) {
-      g.el.classList.toggle('is-hot', g.id === hotId);
-      if (g.id === hotId) g.el.parentNode.appendChild(g.el);   // поднять над остальными
+      g.el.classList.toggle('is-hot', g.id === liveId);
+      g.el.classList.toggle('is-pinned', g.id === pinId);
+      if (g.id === liveId) g.el.parentNode.appendChild(g.el);   // поднять над остальными
     }
-    const hit = geom.nodes.find(g => g.id === hotId);
-    if (hit && showTip) showTipFor(hit);
+    const hit = geom.nodes.find(g => g.id === liveId);
+    if (hit && tipOn) showTipFor(hit);
     else hideTip();
   }
 
@@ -100,11 +138,26 @@ export function createPareto(root, { onHover } = {}) {
 
     const parts = [];
 
-    // --- зона за сроком: туда нельзя, и это видно ----------------------
+    // --- зона за сроком ------------------------------------------------
+    //  Раньше это была заливка непрозрачностью 2 %, то есть ничего.
+    //  Косая штриховка читается и на проекторе, и в чёрно-белой распечатке,
+    //  а на цвет не полагается вовсе: это область «сюда нельзя», и она
+    //  обязана быть видна раньше, чем человек начнёт искать точки.
     const dx = x(req.deadlineH);
+    const zoneW = M.left + plotW - dx;
     if (dx < M.left + plotW) {
+      parts.push(`<defs>
+        <pattern id="tolyq-late" width="7" height="7" patternUnits="userSpaceOnUse"
+                 patternTransform="rotate(45)">
+          <line class="late-hatch" x1="0" y1="0" x2="0" y2="7"/>
+        </pattern>
+      </defs>`);
       parts.push(`<rect class="deadline-zone" x="${dx.toFixed(1)}" y="${M.top}"
-        width="${(M.left + plotW - dx).toFixed(1)}" height="${plotH}"/>`);
+        width="${zoneW.toFixed(1)}" height="${plotH}" fill="url(#tolyq-late)"/>`);
+      if (zoneW > 86) {
+        parts.push(`<text class="deadline-zone-text" x="${(dx + zoneW / 2).toFixed(1)}"
+          y="${(M.top + plotH - 9).toFixed(1)}" text-anchor="middle">позже срока</text>`);
+      }
     }
 
     // --- сетка и оси ---------------------------------------------------
@@ -122,6 +175,19 @@ export function createPareto(root, { onHover } = {}) {
     parts.push(`<line class="ax-line" x1="${M.left}" y1="${M.top}" x2="${M.left}" y2="${M.top + plotH}"/>`);
     parts.push(`<text class="ax-title" x="${M.left}" y="${M.top - 6}">Стоимость, ₸</text>`);
     parts.push(`<text class="ax-title" x="${M.left + plotW}" y="${h - 6}" text-anchor="end">Срок доставки, часов</text>`);
+
+    // --- куда лучше: в пустой левый нижний угол -------------------------
+    //  Угол свободен по устройству задачи: варианта, который одновременно
+    //  и самый дешёвый, и самый быстрый, не существует — иначе не было бы
+    //  и фронта. Значит, подсказку там ничем не заслонит.
+    {
+      const ax = M.left + 14, ay = M.top + plotH - 14;
+      const bx = M.left + 52, by = M.top + plotH - 52;
+      parts.push(`<g class="better" aria-hidden="true">
+        <path class="better__arrow" d="M ${bx} ${by} L ${ax} ${ay} M ${ax + 11} ${ay} L ${ax} ${ay} L ${ax} ${ay - 11}"/>
+        <text class="better__text" x="${bx + 6}" y="${by - 3}">лучше</text>
+      </g>`);
+    }
 
     // --- линия срока ---------------------------------------------------
     if (dx < M.left + plotW) {
@@ -161,7 +227,9 @@ export function createPareto(root, { onHover } = {}) {
         </g>`;
       }
 
-      parts.push(`<g class="${cls.join(' ')}" data-id="${p.r.id}" role="img"
+      // Точка — не картинка, а орган управления: по ней щёлкают, чтобы
+      // закрепить вариант, и на неё встают с клавиатуры.
+      parts.push(`<g class="${cls.join(' ')}" data-id="${p.r.id}" role="button" tabindex="0"
         aria-label="${esc(p.r.label)}: ${fmt.kzt(p.r.costKzt)}, ${fmt.hoursShort(p.r.hours)}, ${fmt.co2(p.r.co2Kg)}">
         <circle class="pt__halo" cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${(pr + 5).toFixed(1)}"/>
         ${mark}
@@ -203,26 +271,41 @@ export function createPareto(root, { onHover } = {}) {
         if (e.pointerType === 'touch') return;
         leave();
       });
+      n.el.addEventListener('click', () => toggle(n));
+      // С клавиатуры точка ведёт себя ровно как под курсором
+      n.el.addEventListener('focus', () => hover(n));
+      n.el.addEventListener('blur', () => leave());
+      n.el.addEventListener('keydown', e => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        toggle(n);
+      });
     }
     svg.addEventListener('pointerleave', leave);
 
     geom = { nodes, w, h };
-    if (hotId) setHot(hotId);
+    paint();
   }
 
   function hover(n) {
     hotId = n.id;
-    for (const g of geom?.nodes || []) g.el?.classList.toggle('is-hot', g.id === hotId);
-    n.el.parentNode.appendChild(n.el);
-    showTipFor(n);
+    tipOn = true;
+    paint();
     onHover?.(n.route);
   }
 
   function leave() {
     hotId = null;
-    for (const g of geom?.nodes || []) g.el?.classList.remove('is-hot');
-    hideTip();
+    tipOn = false;
+    paint();
     onHover?.(null);
+  }
+
+  /** Щелчок по закреплённой точке снимает закрепление: иначе из него не выйти. */
+  function toggle(n) {
+    pinId = pinId === n.id ? null : n.id;
+    paint();
+    onPick?.(pinId ? n.route : null);
   }
 
   // ------------------------------------------------------------------

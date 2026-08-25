@@ -4,10 +4,20 @@
 //  Карта здесь не украшение. Она доказывает, что решение принято на
 //  настоящей сети, а не в таблице из пяти строк.
 //
+//  ПОДЛОЖКА. Под графом лежит настоящий контур страны и четыре крупных
+//  озера (src/ui/kz-geo.js). Без них двенадцать точек и линии между ними
+//  висели бы в пустоте: понять, что Актау — это берег Каспия, а Достык —
+//  китайская граница, было бы неоткуда. Подложка нарочно почти не видна:
+//  она объясняет расположение, а показывает маршрут граф поверх неё.
+//
 //  ПРОЕКЦИЯ. Широта и долгота линейно ложатся в вьюпорт, но долгота
 //  сжимается на cos(широты): на 48-й параллели градус долготы примерно
 //  вдвое короче градуса широты. Без поправки Казахстан выходит растянутым
 //  вширь и перестаёт быть узнаваемым.
+//
+//  Кадр задаёт КОНТУР, а не города: страна должна помещаться целиком,
+//  иначе граница обрежется по краю панели и превратится в случайную
+//  ломаную. Города просто ложатся внутрь кадра там, где они и стоят.
 //
 //  Виды транспорта различаются НАЧЕРТАНИЕМ, а не только цветом: сплошная
 //  линия — железная дорога, штриховая — автодорога. На проекторе с
@@ -15,6 +25,7 @@
 // =====================================================================
 
 import * as fmt from './format.js';
+import { KZ_OUTLINE, KZ_LAKES } from './kz-geo.js';
 
 // Поля вокруг карты оставляют место подписям городов по краям. На узком
 // экране поля ужимаются, а те подписи, которым места не хватило, снимает
@@ -82,11 +93,20 @@ export function createNetworkMap(root, { onNodeHover } = {}) {
     const w = root.clientWidth;
     if (!w) return;
 
-    const proj = project(net.nodes, w);
-    const h = proj.height;
-    const P = id => proj.points[id];
+    const { at, height: h } = project(w);
+    const points = {};
+    for (const n of net.nodes) points[n.id] = at(n.lon, n.lat);
+    const P = id => points[id];
 
     const parts = [];
+
+    // --- подложка: страна и озёра ---------------------------------------
+    //  Идёт первой и потому лежит под всем остальным. Никаких событий на
+    //  ней нет: это фон, а не объект, с которым человек работает.
+    parts.push(`<path class="kz-land" d="${ringPath(KZ_OUTLINE, at)}"/>`);
+    for (const lake of KZ_LAKES) {
+      parts.push(`<path class="kz-water" d="${ringPath(lake, at)}"/>`);
+    }
 
     // --- базовая сеть ---------------------------------------------------
     for (const e of net.edges) {
@@ -187,7 +207,7 @@ export function createNetworkMap(root, { onNodeHover } = {}) {
 
     root.innerHTML =
       `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img"
-            aria-label="Граф транспортной сети Казахстана: ${net.nodes.length} узлов, ${net.edges.length} рёбер">
+            aria-label="Карта Казахстана с транспортной сетью: ${net.nodes.length} городов, ${net.edges.length} плеч">
          ${parts.join('')}
        </svg>` + legendHtml();
 
@@ -274,35 +294,46 @@ const overlaps = (a, b) =>
 // ---------------------------------------------------------------------
 //  Проекция
 // ---------------------------------------------------------------------
-function project(nodes, width) {
-  const latMean = nodes.reduce((s, n) => s + n.lat, 0) / nodes.length;
-  const k = Math.cos(latMean * Math.PI / 180);
+/** Габариты страны в проекционных единицах. Контур не меняется — считаем раз. */
+const BOX = (() => {
+  let lonLo = Infinity, lonHi = -Infinity, latLo = Infinity, latHi = -Infinity;
+  for (const [lon, lat] of KZ_OUTLINE) {
+    if (lon < lonLo) lonLo = lon;
+    if (lon > lonHi) lonHi = lon;
+    if (lat < latLo) latLo = lat;
+    if (lat > latHi) latHi = lat;
+  }
+  const k = Math.cos((latLo + latHi) / 2 * Math.PI / 180);
+  return { k, xLo: lonLo * k, spanX: (lonHi - lonLo) * k, yLo: -latHi, spanY: latHi - latLo };
+})();
 
-  const xs = nodes.map(n => n.lon * k);
-  const ys = nodes.map(n => -n.lat);
-  const xLo = Math.min(...xs), xHi = Math.max(...xs);
-  const yLo = Math.min(...ys), yHi = Math.max(...ys);
-  const spanX = xHi - xLo || 1, spanY = yHi - yLo || 1;
-
+function project(width) {
   // высоту подбираем под форму страны, а не наоборот
   const pad = padX(width);
   const innerW = Math.max(80, width - pad * 2);
-  const scale = innerW / spanX;
-  const height = Math.round(Math.min(430, Math.max(220, spanY * scale + PAD_Y * 2)));
+  const scale = innerW / BOX.spanX;
+  const height = Math.round(Math.min(430, Math.max(220, BOX.spanY * scale + PAD_Y * 2)));
   const innerH = height - PAD_Y * 2;
-  const s = Math.min(scale, innerH / spanY);
+  const s = Math.min(scale, innerH / BOX.spanY);
 
-  const offX = (width - spanX * s) / 2;
-  const offY = (height - spanY * s) / 2;
+  const offX = (width - BOX.spanX * s) / 2;
+  const offY = (height - BOX.spanY * s) / 2;
 
-  const points = {};
-  for (const n of nodes) {
-    points[n.id] = {
-      x: offX + (n.lon * k - xLo) * s,
-      y: offY + (-n.lat - yLo) * s,
-    };
+  const at = (lon, lat) => ({
+    x: offX + (lon * BOX.k - BOX.xLo) * s,
+    y: offY + (-lat - BOX.yLo) * s,
+  });
+  return { at, height };
+}
+
+/** Кольцо градусов -> замкнутый путь SVG. */
+function ringPath(ring, at) {
+  let d = '';
+  for (let i = 0; i < ring.length; i++) {
+    const p = at(ring[i][0], ring[i][1]);
+    d += (i ? 'L' : 'M') + p.x.toFixed(1) + ' ' + p.y.toFixed(1) + ' ';
   }
-  return { points, height };
+  return d + 'Z';
 }
 
 /**

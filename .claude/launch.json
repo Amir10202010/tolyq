@@ -4,7 +4,7 @@
     {
       "name": "tolyq",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["dev-server.py", "8010"],
+      "runtimeArgs": ["tools/serve.py", "8010"],
       "port": 8010
     }
   ]

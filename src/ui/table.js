@@ -6,7 +6,9 @@
 //  цене и прочитать конкретные значения.
 //
 //  Таблица делит подсветку с графиком и картой: наведение на строку
-//  подсвечивает тот же маршрут, что и наведение на точку.
+//  подсвечивает тот же маршрут, что и наведение на точку, а щелчок
+//  закрепляет его — иначе, чтобы разглядеть маршрут на карте, курсор
+//  пришлось бы держать на строке, не отводя глаз.
 // =====================================================================
 
 import * as fmt from './format.js';
@@ -19,13 +21,14 @@ const COLUMNS = [
   { key: 'fillPct', title: 'Загрузка',  num: true, fmt: v => fmt.pct(v) },
 ];
 
-export function createTable(root, { onHover } = {}) {
+export function createTable(root, { onHover, onPick } = {}) {
   let data = null;
   let sortKey = 'costKzt';
   let sortDir = 1;              // 1 — по возрастанию
   let hotId = null;
+  let pinId = null;
 
-  return { update, setHot, clear: () => setHot(null) };
+  return { update, setHot, setPin, clear: () => setHot(null) };
 
   function update(solution, request) {
     data = { solution, request };
@@ -34,8 +37,19 @@ export function createTable(root, { onHover } = {}) {
 
   function setHot(id) {
     hotId = id;
+    paint();
+  }
+
+  function setPin(id) {
+    pinId = id;
+    paint();
+  }
+
+  function paint() {
     for (const tr of root.querySelectorAll('tbody tr')) {
-      tr.classList.toggle('is-hot', tr.dataset.id === hotId);
+      tr.classList.toggle('is-hot', tr.dataset.id === (hotId || pinId));
+      tr.classList.toggle('is-pinned', tr.dataset.id === pinId);
+      tr.setAttribute('aria-selected', String(tr.dataset.id === pinId));
     }
   }
 
@@ -75,7 +89,7 @@ export function createTable(root, { onHover } = {}) {
         : `<td class="num">${c.fmt(r[c.key])}</td>`).join('');
 
       return `<tr class="table__row table__row--${kind}${r.feasible ? '' : ' table__row--miss'}"
-                  data-id="${esc(r.id)}">${cells}</tr>`;
+                  data-id="${esc(r.id)}" aria-selected="false">${cells}</tr>`;
     }).join('');
 
     root.innerHTML = `
@@ -105,9 +119,14 @@ export function createTable(root, { onHover } = {}) {
       const route = rows.find(r => r.id === tr.dataset.id);
       tr.addEventListener('pointerenter', () => { setHot(tr.dataset.id); onHover?.(route); });
       tr.addEventListener('pointerleave', () => { setHot(null); onHover?.(null); });
+      tr.addEventListener('click', () => {
+        pinId = pinId === tr.dataset.id ? null : tr.dataset.id;
+        paint();
+        onPick?.(pinId ? route : null);
+      });
     }
 
-    if (hotId) setHot(hotId);
+    paint();
   }
 }
 

@@ -63,6 +63,15 @@
   --info:      var(--accent);
   --info-soft: var(--accent-s);
 
+  /* --- Карта ------------------------------------------------------------
+     Подложка обязана быть тише сети, которая по ней идёт: суша чуть
+     темнее бумаги, вода — единственное холодное пятно в палитре, берег
+     и граница — обычная линейка. Если подложку видно раньше маршрута,
+     значения у неё стало больше, чем у ответа. */
+  --land:   #F3F2EE;
+  --water:  #E7EDF1;
+  --coast:  var(--rule-3);
+
   /* --- Виды транспорта --------------------------------------------------
      Железная дорога — тот же акцент: она и есть предмет продукта. */
   --rail:    var(--accent);
@@ -385,6 +394,12 @@ table { border-collapse: collapse; width: 100%; }
 .panel__plot, .panel__table { min-width: 0; position: relative; }
 .panel__body { min-width: 0; flex: 1; }
 
+/* Карта широкая и низкая: её высоту задаёт форма страны, а не колонка.
+   Растягивать под соседа нечего, поэтому сноска идёт сразу под картой,
+   а свободное место остаётся внизу колонки. Растянутое тело отодвигало
+   сноску на три сотни пикселей вниз, и она читалась как чужая. */
+.panel--network .panel__body { flex: none; }
+
 .panel__note {
   margin-top: var(--s-5);
   padding-top: var(--s-4);
@@ -625,21 +640,70 @@ table { border-collapse: collapse; width: 100%; }
 }
 .lede b { color: var(--fg); font-weight: var(--w-medium); }
 
-/* ------------------------------------------------- Следующий шаг
-   На каждом экране ровно одно главное действие и напоминание, где мы
-   находимся. Раньше не было ни того, ни другого. */
-.next {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: var(--s-4); flex-wrap: wrap;
+/* ------------------------------------------------- Подвал шага
+   Панель управления обходом: назад — где мы — дальше. Три постоянных
+   места на всех трёх экранах, поэтому рука находит «Дальше» не читая.
+   Раньше кнопка стояла у левого края, счётчик — у правого, и между ними
+   зияла пустая строка: два предмета, а не один орган управления.
+
+   Полоса из трёх отрезков дублирует надпись намеренно. Надпись читают,
+   полосу видят: положение в обходе должно считываться боковым зрением,
+   до того как человек начал разбирать слова. */
+.steps {
+  display: grid; align-items: center;
+  grid-template-columns: 1fr auto 1fr;
+  grid-template-areas: "back meta next";
+  gap: var(--s-4);
   margin-top: var(--gap);
   padding-top: var(--s-6);
   border-top: 1px solid var(--rule);
 }
-.next__where {
+
+/* Отрицательное поле возвращает подпись тихой кнопки на край колонки:
+   с внутренним отступом она висела бы в сантиметре от границы и не
+   выглядела бы началом строки. */
+.steps__back { grid-area: back; justify-self: start; margin-left: calc(var(--s-4) * -1); }
+.steps__next { grid-area: next; justify-self: end; }
+
+/* На первом шаге возвращаться некуда, но место назад сохраняется: без
+   него «где мы» съезжает влево и подвал перестаёт быть одинаковым. */
+.steps__back:empty { pointer-events: none; }
+
+.steps__where {
+  grid-area: meta;
+  display: grid; gap: var(--s-2); justify-items: center;
   font-family: var(--mono);
   font-size: var(--t-micro); font-weight: var(--w-medium);
   letter-spacing: .09em; text-transform: uppercase;
   color: var(--fg-3);
+  white-space: nowrap;
+}
+
+.steps__bar { display: flex; gap: 3px; }
+.steps__seg {
+  width: 22px; height: 3px; border-radius: var(--r-pill);
+  background: var(--rule-2);
+}
+.steps__seg.is-done { background: var(--accent); }
+
+/* Стрелка направления. Иконка, а не символ из шрифта: «→» в Inter
+   заметно светлее текста рядом и выглядит съехавшим. */
+.btn__ico {
+  width: 15px; height: 15px; flex: none;
+  fill: none; stroke: currentColor;
+  stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;
+}
+
+/* Узкий экран: главное действие занимает всю ширину и идёт первым,
+   под ним — откуда пришли и где находимся. */
+@media (max-width: 719px) {
+  .steps {
+    grid-template-columns: auto 1fr;
+    grid-template-areas: "next next" "back meta";
+    gap: var(--s-4) var(--s-3);
+  }
+  .steps__next { justify-self: stretch; width: 100%; }
+  .steps__where { justify-self: end; }
 }
 
 /* ====================================================== Служебные блоки */
@@ -1005,6 +1069,76 @@ table { border-collapse: collapse; width: 100%; }
 .legend__line--road { border-top: 1.5px dashed var(--road); }
 .legend__ring { width: 10px; height: 10px; flex: none; border-radius: 50%; border: 1.5px solid var(--warn); }
 
+/* -------- Короткий список под графиком
+   Три строки, разделённые линейкой, — не карточки: коробка вокруг каждой
+   строки сделала бы их важнее самого графика, а они его подпись.
+   Нажатая строка помечается слева акцентной чертой — тем же приёмом,
+   что и активный раздел в боковой панели. */
+.picks {
+  margin-top: var(--s-5);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--rule);
+}
+.picks:empty { display: none; }
+
+.picks__head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--s-4); margin-bottom: var(--s-1);
+}
+.picks__hint { font-size: var(--t-xs); color: var(--fg-4); }
+
+.pick {
+  position: relative;
+  display: grid; width: 100%;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--s-1) var(--s-4);
+  padding: var(--s-3) var(--s-3) var(--s-3) var(--s-4);
+  margin-left: calc(var(--s-4) * -1);
+  background: none; border: 0; border-radius: var(--r-sm);
+  text-align: left; cursor: pointer;
+  transition: background var(--dur-2) var(--ease);
+}
+.pick + .pick { box-shadow: 0 -1px 0 var(--rule); }
+.pick:hover { background: var(--sunk); }
+.pick:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.pick::before {
+  content: ""; position: absolute; left: 0; top: 6px; bottom: 6px;
+  width: 2px; border-radius: var(--r-pill);
+  background: var(--accent);
+  opacity: 0; transition: opacity var(--dur-2) var(--ease);
+}
+.pick.is-on::before { opacity: 1; }
+.pick.is-on { background: var(--accent-s); }
+
+.pick__tag {
+  grid-column: 1 / -1;
+  font-family: var(--mono);
+  font-size: var(--t-micro); font-weight: var(--w-medium);
+  letter-spacing: .09em; text-transform: uppercase;
+  color: var(--fg-3);
+}
+.pick.is-on .pick__tag { color: var(--accent); }
+
+.pick__name {
+  font-size: var(--t-sm); font-weight: var(--w-medium); color: var(--fg);
+  line-height: 1.4;
+}
+.pick__nums {
+  display: flex; gap: var(--s-3); flex: none;
+  font-family: var(--mono); font-size: var(--t-2xs); color: var(--fg-3);
+  white-space: nowrap;
+}
+.pick__nums b { color: var(--fg); font-weight: var(--w-medium); }
+
+/* На узкой колонке числа уходят под название: сжимать их переносом
+   нельзя — разряды порвутся, а моноширинный столбец рассыплется. */
+@media (max-width: 520px) {
+  .pick { grid-template-columns: minmax(0, 1fr); }
+  .pick__nums { gap: var(--s-4); }
+}
+
 /* Всплывающая карточка — один из немногих настоящих «листов» */
 .tip {
   position: absolute; z-index: 20;
@@ -1056,6 +1190,10 @@ table { border-collapse: collapse; width: 100%; }
   transition: fill var(--dur-1) var(--ease);
 }
 .pt--front .pt__dot { fill: var(--accent-3); }
+/* Отброшенные показываем, но приглушённо: они доказывают, что перебор
+   был, и только. Спорить за внимание с фронтом им не за чем. */
+.pt--dim   { opacity: .5; }
+.pt--dim:hover, .pt--dim.is-hot { opacity: 1; }
 .pt--dim   .pt__dot { fill: none; stroke: var(--fg-4); stroke-width: 1.2; }
 .pt--rec   .pt__dot { fill: var(--accent); }
 .pt--base  .pt__dot { fill: var(--road); }
@@ -1078,14 +1216,48 @@ table { border-collapse: collapse; width: 100%; }
 .pt__label--base { fill: var(--road); }
 
 .front-line { fill: none; stroke: var(--accent-3); stroke-width: 1.2; stroke-opacity: .6; stroke-linejoin: round; }
+
+/* Куда лучше. Обе шкалы «меньше — лучше», и без этой стрелки график
+   читается наоборот: вверх и вправо привычно означает «выше и лучше». */
+.better__arrow {
+  fill: none; stroke: var(--fg-4); stroke-width: 1.2;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.better__text {
+  fill: var(--fg-4); font-family: var(--mono); font-size: 10.5px;
+  letter-spacing: .09em; text-transform: uppercase;
+}
+
 .deadline-line { stroke: var(--bad); stroke-width: 1; stroke-dasharray: 3 4; opacity: .55; }
 .deadline-text {
   fill: var(--bad); font-family: var(--mono); font-size: 10.5px;
   font-weight: 500; letter-spacing: .07em; text-transform: uppercase;
 }
-.deadline-zone { fill: var(--bad); opacity: .022; }
+/* Зона «позже срока». Штриховка, а не заливка: заливка такой светлоты,
+   чтобы не спорить с точками, на проекторе исчезала совсем, а более
+   тёмная превращала половину графика в красное поле. */
+.deadline-zone { opacity: 1; }
+.late-hatch    { stroke: var(--bad); stroke-width: 1; stroke-opacity: .26; }
+.deadline-zone-text {
+  fill: var(--bad); opacity: .6;
+  font-family: var(--mono); font-size: 10.5px;
+  letter-spacing: .09em; text-transform: uppercase;
+}
+
+/* Закреплённый вариант остаётся отмеченным после ухода курсора: кольцо
+   держится, подсказка — нет, иначе она закрывает соседние точки. */
+.pt:focus { outline: none; }
+.pt:focus-visible .pt__halo { opacity: .55; stroke: var(--accent); }
+.pt.is-pinned .pt__halo { opacity: .5; stroke: var(--fg); stroke-dasharray: 2 3; }
 
 /* -------- Карта сети */
+
+/* Подложка. Заливка суши отделяет страну от бумаги, но настолько слабо,
+   что читается как оттенок, а не как фигура: спорить с маршрутом за
+   внимание она не должна. */
+.kz-land  { fill: var(--land); stroke: var(--coast); stroke-width: 1; stroke-linejoin: round; }
+.kz-water { fill: var(--water); stroke: none; }
+
 .net-edge       { stroke: var(--rule-2); fill: none; stroke-width: 1; }
 .net-edge--road { stroke-dasharray: 3 4; }
 

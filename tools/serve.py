@@ -33,6 +33,14 @@ class NoCacheHandler(SimpleHTTPRequestHandler):
 
 
 def main():
+    # Консоль Windows по умолчанию в cp1252 и падает на кириллице в print.
+    # Переключаем поток на UTF-8; где это не поддерживается — заменяем
+    # непечатаемое, но сервер в любом случае должен подняться.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, OSError):
+        pass
+
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
     handler = partial(NoCacheHandler, directory=".")
     server = ThreadingHTTPServer(("127.0.0.1", port), handler)

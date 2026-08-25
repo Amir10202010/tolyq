@@ -83,7 +83,7 @@ function normalise(sol, request) {
     dominated,
     truckBaseline,
     recommended: sol.recommended.id === sol.truckBaseline?.id ? truckBaseline : sol.recommended,
-    packing: withOwnParcel(sol.packing, request),
+    packing: withRejectReasons(withOwnParcel(sol.packing, request), request, sol.stopping),
     considered: sol.considered ?? sol.stats?.generated ?? (pareto.length + dominated.length),
   };
 }
@@ -143,4 +143,52 @@ function withOwnParcel(packing, request) {
     accepted: [mine, ...accepted],
     tonsTotal: (packing.tonsTotal ?? 0) + request.tons,
   };
+}
+
+/**
+ * Почему заявку не взяли. Движок отдаёт только флаг accepted, а сцене
+ * сборки нужна причина словами — иначе карточка отскакивает молча и
+ * зритель не понимает, что за правило сработало.
+ *
+ * Причину НЕ УГАДЫВАЕМ. Называем только то, что доказуемо из тех же
+ * данных: несовместимость типов, превышение массы или объёма, приход
+ * после отправки. Во всех прочих случаях говорим нейтрально — соврать
+ * про правило хуже, чем промолчать о нём.
+ *
+ * СОГЛАСОВАТЬ С ДВИЖКОМ: если он начнёт возвращать Arrival.reason,
+ * этот блок надо убрать — его причина всегда точнее выведенной.
+ */
+function withRejectReasons(packing, request, stopping) {
+  if (!packing?.rejected?.length) return packing;
+
+  const dispatchAtH = stopping?.dispatchAtH ?? Infinity;
+  const accepted = packing.accepted || [];
+
+  const rejected = packing.rejected.map(a => {
+    if (a.reason) return a;
+
+    // сколько уже лежало в вагоне к моменту её прихода
+    const before = accepted.filter(x => x.atH <= a.atH);
+    const tons = before.reduce((s, x) => s + (x.tons || 0), 0);
+    const vol  = before.reduce((s, x) => s + (x.volumeM3 || 0), 0);
+
+    let reason = 'Не вошла в этот вагон';
+    if (a.atH > dispatchAtH) {
+      reason = 'Вагон уже отправлен';
+    } else if (incompatible(a.cargoType, request.cargoType)) {
+      reason = `${CARGO_TYPES[a.cargoType]} не едет рядом с грузом «${CARGO_TYPES[request.cargoType]}»`;
+    } else if (tons + (a.tons || 0) > CONSTANTS.WAGON_TONS) {
+      reason = 'Не влезает по массе';
+    } else if (vol + (a.volumeM3 || 0) > CONSTANTS.WAGON_M3) {
+      reason = 'Не влезает по объёму';
+    }
+    return { ...a, reason };
+  });
+
+  return { ...packing, rejected };
+}
+
+/** Химию нельзя везти вместе с продуктами. Остальное совместимо. */
+function incompatible(a, b) {
+  return (a === 'chemical' && b === 'food') || (a === 'food' && b === 'chemical');
 }
