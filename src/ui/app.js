@@ -10,7 +10,7 @@
 //  requestAnimationFrame в каждом модуле.
 // =====================================================================
 
-import * as engine from './mock.js';          // <- ПРИ ИНТЕГРАЦИИ: '../core/engine.js'
+import * as engine from './engine.js';
 import { NODES } from '../core/types.js';
 import * as fmt from './format.js';
 import { createForm } from './form.js';
