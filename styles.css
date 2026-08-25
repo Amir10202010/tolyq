@@ -1,0 +1,920 @@
+/* =====================================================================
+   TOLYQ — визуальный язык
+   ---------------------------------------------------------------------
+   Источник образа: ночной диспетчерский пульт железной дороги.
+   Фон — холодный сланец, а не чистый чёрный. Текст — тёплая бумага
+   под лампой накаливания. Цвет кодирует смысл и взят из железнодорожной
+   сигнализации, а не выбран по вкусу:
+
+     зелёный  «проследование» — рекомендация, экономия
+     жёлтый   «внимание»      — ожидание, порог, накопление
+     красный  «стой»          — потери, порожний пробег, срыв срока
+     лунно-белый              — варианты, которые перебор отбросил
+
+   Виды транспорта разведены и цветом, и начертанием линии: на проекторе
+   и в чёрно-белой распечатке разница обязана сохраниться.
+   ===================================================================== */
+
+/* ---------------------------------------------------------------- 1. Токены */
+:root {
+  /* Поверхности */
+  --bg:        #0B1013;
+  --bg-sunk:   #080C0E;
+  --panel:     #111A1D;
+  --panel-2:   #162126;
+  --line:      #1E2C31;
+  --line-2:    #2B3D44;
+
+  /* Текст */
+  --ink:       #E9E5DA;
+  --ink-2:     #A2ADB1;
+  --ink-3:     #6E7C81;
+
+  /* Сигналы */
+  --go:        #35B87E;
+  --go-dim:    #1C4F39;
+  --wait:      #E8A93D;
+  --wait-dim:  #4A3717;
+  --stop:      #E05C45;
+  --stop-dim:  #4A211A;
+  --lunar:     #96A5AA;
+
+  /* Виды транспорта */
+  --rail:      #56AEC9;
+  --road:      #C7A25C;
+
+  /* Оттенки отправителей в полосе загрузки */
+  --ship-1:    #7FB3C8;
+  --ship-2:    #A08FC0;
+  --ship-3:    #C99A7A;
+  --ship-4:    #8FBF9E;
+  --ship-5:    #C08FA6;
+  --ship-6:    #9FA9C4;
+
+  /* Типографика */
+  --display: 'Oswald', 'Arial Narrow', 'Roboto Condensed', system-ui, sans-serif;
+  --body:    'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --mono:    'IBM Plex Mono', 'Cascadia Mono', 'Consolas', ui-monospace, monospace;
+
+  /* Ритм */
+  --gap:     14px;
+  --pad:     18px;
+  --radius:  2px;
+  --hair:    1px;
+
+  /* Сетка миллиметровки внутри графиков */
+  --grid-step: 8px;
+}
+
+/* ---------------------------------------------------------------- 2. Сброс */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 0.9375rem/1.55 var(--body);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, p, figure, fieldset, legend { margin: 0; padding: 0; }
+fieldset { border: 0; min-width: 0; }
+button, input, select { font: inherit; color: inherit; }
+
+::selection { background: var(--go-dim); color: var(--ink); }
+
+:focus-visible {
+  outline: 2px solid var(--wait);
+  outline-offset: 2px;
+}
+
+.skip {
+  position: absolute; left: -9999px; top: 0; z-index: 50;
+  background: var(--wait); color: #10151A; padding: 10px 16px;
+  font-family: var(--display); text-transform: uppercase; letter-spacing: .08em;
+}
+.skip:focus { left: 0; }
+
+/* Полосы прокрутки под тёмную тему */
+* { scrollbar-color: var(--line-2) transparent; scrollbar-width: thin; }
+*::-webkit-scrollbar { height: 8px; width: 8px; }
+*::-webkit-scrollbar-thumb { background: var(--line-2); }
+*::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------------------------------------------------------------- 3. Шапка */
+.masthead {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 20px;
+  padding: 14px clamp(14px, 2.4vw, 28px);
+  border-bottom: var(--hair) solid var(--line);
+  background: linear-gradient(var(--panel), var(--panel));
+  position: sticky; top: 0; z-index: 20;
+}
+
+.brand { display: flex; align-items: baseline; gap: 10px; }
+
+.brand__mark {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 1.35rem;
+  letter-spacing: .22em;
+  color: var(--ink);
+  line-height: 1;
+}
+
+.brand__tag {
+  font-family: var(--display);
+  font-weight: 300;
+  font-size: .7rem;
+  text-transform: uppercase;
+  letter-spacing: .14em;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.corridor {
+  display: flex; align-items: baseline; gap: 10px;
+  min-width: 0;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: .95rem;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  overflow: hidden;
+}
+.corridor__leg   { color: var(--ink); white-space: nowrap; }
+.corridor__arrow { color: var(--rail); font-size: 1.1em; }
+.corridor__rest {
+  font-family: var(--mono);
+  font-size: .78rem;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.headline { display: grid; justify-items: end; gap: 1px; line-height: 1.1; }
+.headline__label {
+  font-family: var(--display); font-weight: 300; font-size: .62rem;
+  text-transform: uppercase; letter-spacing: .16em; color: var(--ink-3);
+}
+.headline__value {
+  font-family: var(--mono); font-weight: 500; font-size: 1.5rem;
+  color: var(--go); white-space: nowrap;
+}
+.headline__sub { font-family: var(--mono); font-size: .72rem; color: var(--ink-3); }
+.headline--flat .headline__value { color: var(--ink-2); }
+
+/* ---------------------------------------------------------------- 4. Сетка */
+.grid {
+  display: grid;
+  gap: var(--gap);
+  padding: var(--gap) clamp(14px, 2.4vw, 28px) 28px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* На телефоне сетка одноколоночная и панели идут потоком в порядке разметки:
+   заявка → рекомендация → фронт → сеть → сборка → порог → месяц.
+   Именованные области подключаются только с 780 px — назначать grid-area
+   раньше нельзя, имена там ни к чему не привязаны и все панели схлопнутся
+   в одну ячейку друг поверх друга. */
+@media (min-width: 780px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "request   recommend"
+      "pareto    pareto"
+      "network   network"
+      "loadbar   loadbar"
+      "stopping  stopping"
+      "month     month";
+  }
+
+  .panel--request   { grid-area: request; }
+  .panel--recommend { grid-area: recommend; }
+  .panel--pareto    { grid-area: pareto; }
+  .panel--network   { grid-area: network; }
+  .panel--loadbar   { grid-area: loadbar; }
+  .panel--stopping  { grid-area: stopping; }
+  .panel--month     { grid-area: month; }
+}
+
+/* Парето и карта обязаны быть видны одновременно: наведение на точку
+   подсвечивает маршрут, и если карта уехала за экран, связка бессмысленна.
+   Поэтому до 1560 px форма уезжает наверх, а два графика делят ширину
+   пополам — так каждому достаётся около 600 px вместо 450. */
+@media (min-width: 1180px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      "request   recommend"
+      "pareto    network"
+      "loadbar   stopping"
+      "month     month";
+    align-items: start;
+  }
+}
+
+/* Разбор решения словами делает левую колонку заметно выше правых. Поэтому
+   рекомендация растянута на две строки и стоит рядом со сборкой и порогом —
+   иначе справа под картой зияет пустая полоса высотой в пол-экрана. */
+@media (min-width: 1560px) {
+  .grid {
+    grid-template-columns: 340px minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "request   pareto   network"
+      "recommend pareto   network"
+      "recommend loadbar  stopping"
+      "month     month    month";
+  }
+}
+
+/* ---------------------------------------------------------------- 5. Панель */
+.panel {
+  background: var(--panel);
+  border: var(--hair) solid var(--line);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.panel__head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 11px var(--pad) 10px;
+  border-bottom: var(--hair) solid var(--line);
+}
+
+.panel__title {
+  font-family: var(--display); font-weight: 500; font-size: .74rem;
+  text-transform: uppercase; letter-spacing: .17em; color: var(--ink);
+  white-space: nowrap;
+}
+
+/* Справа в шапке панели — не украшение, а показание прибора */
+.panel__meta {
+  font-family: var(--mono); font-size: .68rem; color: var(--ink-3);
+  text-align: right; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+
+.panel__body { padding: var(--pad); flex: 1; min-width: 0; }
+.panel__body--chart { padding: 10px 10px 4px; position: relative; }
+
+.panel__note {
+  padding: 9px var(--pad) 12px;
+  border-top: var(--hair) solid var(--line);
+  font-size: .74rem; line-height: 1.45; color: var(--ink-3);
+}
+
+/* Заглушка для ещё не собранных экранов */
+.stub {
+  padding: 26px var(--pad);
+  font-family: var(--display); text-transform: uppercase; letter-spacing: .14em;
+  font-size: .72rem; color: var(--ink-3); text-align: center;
+}
+
+/* ---------------------------------------------------------------- 6. Форма */
+.form { padding: var(--pad); display: grid; gap: 14px; }
+
+.form__row { display: grid; gap: 10px; }
+.form__row--pair { grid-template-columns: 1fr 1fr; }
+.form__row--trio { grid-template-columns: 1fr 1fr 1fr; }
+
+.field { display: grid; gap: 5px; min-width: 0; }
+
+.field__label {
+  font-family: var(--display); font-weight: 400; font-size: .63rem;
+  text-transform: uppercase; letter-spacing: .15em; color: var(--ink-3);
+}
+
+.control {
+  width: 100%;
+  background: var(--bg-sunk);
+  border: var(--hair) solid var(--line-2);
+  border-radius: var(--radius);
+  color: var(--ink);
+  padding: 8px 10px;
+  font-size: .84rem;
+  transition: border-color .15s ease;
+}
+.control:hover { border-color: var(--ink-3); }
+.control:focus { border-color: var(--wait); outline: none; }
+
+.control--num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  -moz-appearance: textfield;
+}
+.control--num::-webkit-outer-spin-button,
+.control--num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+select.control {
+  appearance: none; -webkit-appearance: none;
+  padding-right: 26px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--ink-3) 50%),
+    linear-gradient(135deg, var(--ink-3) 50%, transparent 50%);
+  background-position: calc(100% - 14px) 52%, calc(100% - 9px) 52%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+select.control option { background: var(--panel); color: var(--ink); }
+
+/* Свободный ввод: разбирается разборщиком, но остаётся обычным полем */
+.field--free { gap: 5px; }
+.control--free {
+  resize: vertical;
+  min-height: 56px;
+  line-height: 1.45;
+  font-size: .82rem;
+  font-family: var(--body);
+}
+.control--free::placeholder { color: var(--ink-3); opacity: .75; }
+
+/* Разобранные поля подсвечиваются, чтобы было видно, что именно понято.
+   Подсветка гаснет сама — она сообщение, а не состояние. */
+.field.is-parsed .control,
+.field.is-parsed .segmented__item:has(input:checked) {
+  border-color: var(--wait);
+  animation: parsed-glow 2.4s ease-out forwards;
+}
+@keyframes parsed-glow {
+  0%   { background-color: rgba(232,169,61,.16); }
+  55%  { background-color: rgba(232,169,61,.10); }
+  100% { background-color: var(--bg-sunk); border-color: var(--line-2); }
+}
+.field.is-parsed .field__label,
+.weights.is-parsed > legend .field__label { color: var(--wait); transition: color 2.4s ease-out; }
+
+/* Сегментированный переключатель типа груза */
+.field--cargo { gap: 6px; }
+.segmented { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; }
+
+.segmented__item {
+  position: relative;
+  border: var(--hair) solid var(--line-2);
+  margin-left: -1px;
+  padding: 8px 4px;
+  text-align: center;
+  cursor: pointer;
+  font-family: var(--display); font-size: .68rem;
+  text-transform: uppercase; letter-spacing: .07em;
+  color: var(--ink-3);
+  background: var(--bg-sunk);
+  transition: color .15s ease, background .15s ease, border-color .15s ease;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.segmented__item:first-child { margin-left: 0; }
+.segmented__item:hover { color: var(--ink-2); }
+.segmented__item input { position: absolute; opacity: 0; pointer-events: none; }
+.segmented__item:has(input:checked) {
+  background: var(--panel-2); color: var(--ink);
+  border-color: var(--ink-3); z-index: 1;
+}
+.segmented__item:has(input:focus-visible) { outline: 2px solid var(--wait); outline-offset: -2px; }
+
+/* Ползунки приоритетов */
+.weights {
+  display: grid; gap: 9px;
+  padding-top: 12px;
+  border-top: var(--hair) solid var(--line);
+}
+.weights legend { display: flex; align-items: baseline; gap: 8px; width: 100%; }
+.weights__hint {
+  font-family: var(--mono); font-size: .62rem; letter-spacing: 0;
+  text-transform: none; color: var(--ink-3);
+  margin-left: auto;
+}
+
+.weight {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 10px;
+}
+.weight__name {
+  font-family: var(--display); font-size: .7rem;
+  text-transform: uppercase; letter-spacing: .08em; color: var(--ink-2);
+}
+.weight__value {
+  font-family: var(--mono); font-size: .8rem; text-align: right; color: var(--ink);
+}
+.weight__value .unit { color: var(--ink-3); font-size: .8em; margin-left: 1px; }
+
+.weight__input {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 18px; background: transparent; cursor: pointer;
+}
+.weight__input::-webkit-slider-runnable-track {
+  height: 2px; background: var(--line-2);
+}
+.weight__input::-moz-range-track { height: 2px; background: var(--line-2); }
+.weight__input::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 3px; height: 16px; margin-top: -7px;
+  background: var(--wait); border: 0; border-radius: 0;
+}
+.weight__input::-moz-range-thumb {
+  width: 3px; height: 16px;
+  background: var(--wait); border: 0; border-radius: 0;
+}
+.weight[data-key="cost"] .weight__input::-webkit-slider-thumb { background: var(--go); }
+.weight[data-key="cost"] .weight__input::-moz-range-thumb     { background: var(--go); }
+.weight[data-key="time"] .weight__input::-webkit-slider-thumb { background: var(--rail); }
+.weight[data-key="time"] .weight__input::-moz-range-thumb     { background: var(--rail); }
+.weight[data-key="co2"]  .weight__input::-webkit-slider-thumb { background: var(--wait); }
+.weight[data-key="co2"]  .weight__input::-moz-range-thumb     { background: var(--wait); }
+
+.reset {
+  justify-self: start;
+  background: transparent;
+  border: var(--hair) solid var(--line-2);
+  border-radius: var(--radius);
+  color: var(--ink-3);
+  padding: 7px 12px;
+  font-family: var(--display); font-size: .65rem;
+  text-transform: uppercase; letter-spacing: .12em;
+  cursor: pointer;
+  transition: color .15s ease, border-color .15s ease;
+}
+.reset:hover { color: var(--ink); border-color: var(--ink-3); }
+
+/* ---------------------------------------------------------------- 7. Рекомендация */
+.rec { display: grid; gap: 12px; }
+
+.rec__label {
+  font-family: var(--display); font-weight: 500; font-size: 1rem;
+  line-height: 1.25; color: var(--ink);
+  text-transform: uppercase; letter-spacing: .04em;
+}
+
+.rec__figures {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: var(--hair) solid var(--line);
+}
+.figure {
+  padding: 9px 10px;
+  border-left: var(--hair) solid var(--line);
+  min-width: 0;
+}
+.figure:first-child { border-left: 0; }
+.figure__label {
+  display: block;
+  font-family: var(--display); font-size: .58rem;
+  text-transform: uppercase; letter-spacing: .13em; color: var(--ink-3);
+  margin-bottom: 2px;
+}
+.figure__value {
+  display: block;
+  font-family: var(--mono); font-size: 1.02rem; font-weight: 500;
+  color: var(--ink); white-space: nowrap;
+}
+.figure--go   .figure__value { color: var(--go); }
+.figure--stop .figure__value { color: var(--stop); }
+
+.rec__legs { display: grid; gap: 0; }
+
+.leg {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: var(--hair) dashed var(--line);
+  font-size: .78rem;
+}
+.leg:last-child { border-bottom: 0; }
+.leg__pin { width: 12px; height: 12px; align-self: center; }
+.leg__pin i {
+  display: block; height: 2px; width: 12px; background: var(--road);
+}
+.leg--rail .leg__pin i { background: var(--rail); }
+.leg--road .leg__pin i {
+  background: repeating-linear-gradient(90deg, var(--road) 0 4px, transparent 4px 7px);
+}
+.leg__text { color: var(--ink-2); min-width: 0; }
+.leg__text b { color: var(--ink); font-weight: 500; }
+.leg__num { font-family: var(--mono); font-size: .72rem; color: var(--ink-3); white-space: nowrap; }
+
+.leg--transship {
+  color: var(--wait);
+}
+.leg--transship .leg__text { color: var(--wait); }
+.leg--transship .leg__pin i { background: var(--wait); height: 8px; width: 8px; margin: 0 2px; }
+
+.rec__why {
+  font-size: .8rem; line-height: 1.5; color: var(--ink-2);
+  border-left: 2px solid var(--go);
+  padding-left: 10px;
+}
+
+.rec__warn {
+  font-size: .78rem; line-height: 1.45;
+  border-left: 2px solid var(--stop);
+  padding-left: 10px; color: var(--stop);
+}
+
+/* «Почему так» — разбор решения словами. Это полноценный блок панели,
+   а не подпись: у него своя рамка и свой заголовок. */
+.why {
+  border: var(--hair) solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  padding: 11px 13px 12px;
+}
+.why__head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  margin-bottom: 6px;
+}
+.why__title {
+  font-family: var(--display); font-weight: 500; font-size: .63rem;
+  text-transform: uppercase; letter-spacing: .16em; color: var(--ink-2);
+}
+.why__source {
+  font-family: var(--mono); font-size: .6rem; color: var(--ink-3); white-space: nowrap;
+}
+.why__text { font-size: .81rem; line-height: 1.55; color: var(--ink); }
+.why__text + .why__text { margin-top: 7px; color: var(--ink-2); }
+.why__text b { font-weight: 500; color: var(--ink); }
+
+/* Строка статуса модели под пороговой кривой */
+.model-note {
+  font-family: var(--mono);
+  font-size: .68rem;
+  color: var(--ink-3);
+  display: flex; align-items: center; gap: 8px;
+}
+.model-note::before {
+  content: ""; flex: none;
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--go);
+}
+.model-note--cold::before { background: var(--ink-3); }
+
+/* ---------------------------------------------------------------- 8. Графики */
+.chart {
+  position: relative;
+  width: 100%;
+  /* Миллиметровка: приборы нарисованы на разлинованной бумаге.
+     Единственная фактура во всём интерфейсе, и та привязана к данным. */
+  background-image:
+    linear-gradient(to right,  rgba(150,165,170,.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(150,165,170,.045) 1px, transparent 1px);
+  background-size: var(--grid-step) var(--grid-step);
+  background-position: -1px -1px;
+}
+.chart svg { display: block; width: 100%; height: auto; }
+.chart--plain { background-image: none; }
+
+/* Общие классы для осей внутри SVG */
+.ax-line   { stroke: var(--line-2); stroke-width: 1; }
+.ax-tick   { stroke: var(--line); stroke-width: 1; }
+.ax-text   { fill: var(--ink-3); font-family: var(--mono); font-size: 9.5px; }
+.ax-title  { fill: var(--ink-3); font-family: var(--display); font-size: 9px;
+             text-transform: uppercase; letter-spacing: .16em; }
+
+/* Всплывающая карточка над графиком */
+.tip {
+  position: absolute;
+  z-index: 10;
+  min-width: 190px; max-width: 280px;
+  background: var(--panel-2);
+  border: var(--hair) solid var(--line-2);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  pointer-events: none;
+  box-shadow: 0 6px 22px rgba(0,0,0,.55);
+}
+.tip__title {
+  font-family: var(--display); font-size: .74rem; font-weight: 500;
+  text-transform: uppercase; letter-spacing: .05em; color: var(--ink);
+  line-height: 1.25; margin-bottom: 6px;
+}
+.tip__rows { display: grid; gap: 2px; margin-bottom: 6px; }
+.tip__row {
+  display: flex; justify-content: space-between; gap: 12px;
+  font-family: var(--mono); font-size: .7rem; color: var(--ink-2);
+}
+.tip__row span:first-child { color: var(--ink-3); }
+.tip__legs { display: grid; gap: 2px; padding-top: 6px; border-top: var(--hair) solid var(--line); }
+.tip__leg { font-size: .69rem; color: var(--ink-2); display: flex; gap: 6px; align-items: baseline; }
+.tip__leg i {
+  flex: none; width: 10px; height: 2px; background: var(--road); position: relative; top: -3px;
+}
+.tip__leg.is-rail i { background: var(--rail); }
+.tip__leg.is-road i { background: repeating-linear-gradient(90deg, var(--road) 0 3px, transparent 3px 6px); }
+.tip__note { margin-top: 6px; font-size: .69rem; color: var(--ink-3); line-height: 1.4; }
+.tip__flag {
+  margin-top: 6px; font-family: var(--display); font-size: .62rem;
+  text-transform: uppercase; letter-spacing: .1em;
+}
+.tip__flag--stop { color: var(--stop); }
+.tip__flag--go   { color: var(--go); }
+.tip__flag--dim  { color: var(--ink-3); }
+
+/* Легенда под графиком */
+.legend {
+  display: flex; flex-wrap: wrap; gap: 4px 16px;
+  padding: 6px var(--pad) 0;
+  font-size: .69rem; color: var(--ink-3);
+}
+.legend__item { display: flex; align-items: center; gap: 6px; }
+.legend__swatch { width: 10px; height: 10px; flex: none; border-radius: 50%; }
+.legend__swatch--front { background: var(--rail); }
+.legend__swatch--rec   { background: var(--go); }
+.legend__swatch--base  { background: var(--stop); }
+.legend__swatch--dim   { background: var(--lunar); opacity: .35; }
+.legend__line { width: 16px; height: 0; flex: none; border-top: 2px solid var(--rail); }
+.legend__line--road { border-top: 2px dashed var(--road); }
+.legend__ring {
+  width: 11px; height: 11px; flex: none; border-radius: 50%;
+  border: 1.4px solid var(--lunar);
+}
+.legend__swatch--cross {
+  border-radius: 0;
+  background:
+    linear-gradient(45deg, transparent 44%, var(--ink-3) 44% 56%, transparent 56%),
+    linear-gradient(-45deg, transparent 44%, var(--ink-3) 44% 56%, transparent 56%);
+}
+
+/* ---------------------------------------------------------------- 9. Точки Парето */
+.pt { cursor: pointer; }
+.pt__dot {
+  fill: var(--rail);
+  fill-opacity: .9;
+  stroke: var(--bg);
+  stroke-width: 1.2;
+  transition: fill-opacity .12s ease;
+}
+.pt--dim .pt__dot { fill: var(--lunar); fill-opacity: .22; stroke-opacity: .5; }
+.pt--rec .pt__dot { fill: var(--go); }
+.pt--base .pt__dot { fill: var(--stop); }
+.pt--infeasible .pt__dot { fill: none; }
+.pt__cross { stroke: var(--ink-3); stroke-width: 1.4; }
+.pt--infeasible.pt--rec .pt__cross { stroke: var(--go); }
+
+.pt.is-hot .pt__dot { fill-opacity: 1; }
+.pt__halo { fill: none; stroke: var(--ink); stroke-width: 1; opacity: 0; }
+.pt.is-hot .pt__halo { opacity: .55; }
+.pt--rec .pt__halo { stroke: var(--go); opacity: .5; }
+
+.pt__label {
+  fill: var(--ink); font-family: var(--display); font-size: 9.5px;
+  text-transform: uppercase; letter-spacing: .1em;
+}
+.pt__label--rec { fill: var(--go); }
+.pt__label--base { fill: var(--stop); }
+
+.front-line {
+  fill: none; stroke: var(--rail); stroke-width: 1.25;
+  stroke-opacity: .5; stroke-linejoin: round;
+}
+.deadline-line { stroke: var(--stop); stroke-width: 1; stroke-dasharray: 3 3; opacity: .65; }
+.deadline-text { fill: var(--stop); font-family: var(--display); font-size: 9px;
+                 text-transform: uppercase; letter-spacing: .12em; }
+.deadline-zone { fill: var(--stop); opacity: .045; }
+
+/* -------------------------------------------------------------- 10. Карта сети */
+.net-edge      { stroke: var(--line-2); fill: none; stroke-width: 1; }
+.net-edge--rail { stroke-width: 1.4; }
+.net-edge--road { stroke-dasharray: 3 3.5; }
+
+.net-hot       { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.net-hot--rail { stroke: var(--rail); stroke-width: 3; }
+.net-hot--road { stroke: var(--road); stroke-width: 2.4; stroke-dasharray: 6 4.5; }
+
+.net-pulse { fill: var(--ink); }
+
+.net-node       { fill: var(--bg); stroke: var(--ink-3); stroke-width: 1.2; }
+.net-node--hub  { stroke: var(--lunar); stroke-width: 1.4; }
+.net-node--on   { fill: var(--ink); stroke: var(--ink); }
+.net-node-hit   { fill: transparent; cursor: pointer; }
+
+.net-label {
+  fill: var(--ink-3); font-family: var(--display); font-size: 9px;
+  text-transform: uppercase; letter-spacing: .1em;
+}
+.net-label--on { fill: var(--ink); }
+.net-label--end { fill: var(--ink); }
+
+.net-marker circle { fill: var(--panel); stroke: var(--wait); stroke-width: 1.4; }
+.net-marker text   { fill: var(--wait); font-family: var(--mono); font-size: 8.5px; }
+.net-marker-label {
+  fill: var(--wait); font-family: var(--display); font-size: 8.5px;
+  text-transform: uppercase; letter-spacing: .1em;
+}
+
+.net-tooltip rect { fill: var(--panel-2); stroke: var(--line-2); }
+.net-tooltip text { fill: var(--ink); font-family: var(--display); font-size: 9.5px;
+                    text-transform: uppercase; letter-spacing: .08em; }
+
+/* -------------------------------------------------------------- 11. Сборка вагона */
+.load { display: grid; gap: 14px; }
+
+.load__top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+.btn {
+  background: transparent;
+  border: var(--hair) solid var(--line-2);
+  border-radius: var(--radius);
+  color: var(--ink-2);
+  padding: 8px 16px;
+  font-family: var(--display); font-size: .68rem;
+  text-transform: uppercase; letter-spacing: .14em;
+  cursor: pointer;
+  transition: color .15s ease, border-color .15s ease, background .15s ease;
+}
+.btn:hover { color: var(--ink); border-color: var(--ink-3); }
+.btn--go { border-color: var(--go); color: var(--go); }
+.btn--go:hover { background: var(--go-dim); color: var(--ink); border-color: var(--go); }
+
+.load__clock {
+  font-family: var(--mono); font-size: .84rem; color: var(--ink-2);
+  margin-left: auto;
+}
+.load__clock b { color: var(--ink); font-weight: 500; }
+
+.wagon { position: relative; }
+.wagon svg { display: block; width: 100%; height: auto; transition: transform .9s cubic-bezier(.4,0,.2,1); }
+
+/* Порог пройден — вагон трогается. Сдвиг маленький: это акцент, а не мультик. */
+.wagon.is-departed svg { transform: translateX(2.5%); }
+@media (prefers-reduced-motion: reduce) {
+  .wagon.is-departed svg { transform: none; }
+}
+
+.wagon-body   { fill: var(--bg-sunk); stroke: var(--line-2); stroke-width: 1.2; }
+.wagon-frame  { fill: none; stroke: var(--line-2); stroke-width: 1.2; }
+.wagon-wheel  { fill: var(--panel); stroke: var(--line-2); stroke-width: 1.2; }
+.wagon-seg    { stroke: var(--bg-sunk); stroke-width: .8; }
+.wagon-seg--mine { stroke: var(--bg-sunk); }
+.wagon-tick   { stroke: var(--line-2); stroke-width: 1; }
+.wagon-tick-text { fill: var(--ink-3); font-family: var(--mono); font-size: 8.5px; }
+.wagon-thr    { stroke: var(--wait); stroke-width: 1.4; stroke-dasharray: 4 3; }
+.wagon-cap-text { fill: var(--ink-3); font-family: var(--display); font-size: 9px;
+                  text-transform: uppercase; letter-spacing: .12em; }
+
+.load__counters {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: var(--hair) solid var(--line);
+}
+.counter { padding: 10px 12px; border-left: var(--hair) solid var(--line); min-width: 0; }
+.counter:first-child { border-left: 0; }
+.counter__label {
+  display: block; font-family: var(--display); font-size: .58rem;
+  text-transform: uppercase; letter-spacing: .13em; color: var(--ink-3); margin-bottom: 2px;
+}
+.counter__value {
+  display: block; font-family: var(--mono); font-weight: 500; font-size: 1.35rem;
+  color: var(--ink); white-space: nowrap; line-height: 1.1;
+}
+.counter--go   .counter__value { color: var(--go); }
+.counter--stop .counter__value { color: var(--stop); }
+.counter--wait .counter__value { color: var(--wait); }
+
+.load__feed {
+  position: relative;
+  min-height: 108px; max-height: 190px;
+  border: var(--hair) solid var(--line);
+  padding: 8px;
+  display: flex; flex-wrap: wrap; gap: 6px; align-content: flex-start;
+  overflow-y: auto; overflow-x: hidden;
+}
+
+.offer {
+  border: var(--hair) solid var(--line-2);
+  border-left: 3px solid var(--lunar);
+  background: var(--panel-2);
+  padding: 5px 9px;
+  min-width: 0;
+  animation: fly-in .34s cubic-bezier(.2,.8,.3,1) both;
+}
+.offer__name {
+  display: block; font-size: .72rem; color: var(--ink); line-height: 1.25;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px;
+}
+.offer__num { font-family: var(--mono); font-size: .68rem; color: var(--ink-3); }
+.offer__reason {
+  display: block; font-size: .66rem; color: var(--stop); line-height: 1.3; margin-top: 1px;
+  max-width: 210px;
+}
+.offer--rejected { border-left-color: var(--stop); animation: bounce-off .5s cubic-bezier(.3,.1,.4,1) both; }
+.offer--mine     { border-left-color: var(--go); }
+
+@keyframes fly-in {
+  from { opacity: 0; transform: translateY(14px) scale(.96); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes bounce-off {
+  0%   { opacity: 0; transform: translateY(14px); }
+  45%  { opacity: 1; transform: translateY(-3px); }
+  70%  { transform: translateY(1px); }
+  100% { opacity: .78; transform: none; }
+}
+
+.load__done {
+  font-family: var(--display); font-size: .74rem;
+  text-transform: uppercase; letter-spacing: .12em; color: var(--go);
+  border-left: 2px solid var(--go); padding-left: 10px;
+}
+
+/* -------------------------------------------------------------- 12. Порог */
+.stop-wrap { display: grid; gap: 12px; }
+
+.stop__figures { display: grid; grid-template-columns: 1fr 1fr; border: var(--hair) solid var(--line); }
+
+.thr-area-wait { fill: var(--wait); opacity: .07; }
+.thr-area-go   { fill: var(--go);   opacity: .07; }
+.thr-curve     { fill: none; stroke: var(--wait); stroke-width: 1.8; stroke-linejoin: round; }
+.thr-acc       { fill: none; stroke: var(--ink); stroke-width: 1.4; }
+.thr-zone-text {
+  font-family: var(--display); font-size: 9px;
+  text-transform: uppercase; letter-spacing: .16em;
+}
+.thr-zone-text--wait { fill: var(--wait); opacity: .8; }
+.thr-zone-text--go   { fill: var(--go);   opacity: .8; }
+.thr-now       { fill: var(--ink); stroke: var(--bg); stroke-width: 1.4; }
+.thr-now--fired { fill: var(--go); }
+.thr-dispatch  { stroke: var(--go); stroke-width: 1; stroke-dasharray: 3 3; }
+
+.stop__hint {
+  font-size: .78rem; line-height: 1.5; color: var(--ink-2);
+  border-left: 2px solid var(--wait); padding-left: 10px;
+}
+
+/* -------------------------------------------------------------- 13. Месяц */
+.month { display: grid; gap: 14px; }
+.month__figures {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: var(--hair) solid var(--line);
+}
+@media (max-width: 620px) {
+  .month__figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .month__figures .figure:nth-child(3) { border-left: 0; }
+  .month__figures .figure:nth-child(n+3) { border-top: var(--hair) solid var(--line); }
+}
+.month__figures .figure__value { font-size: 1.5rem; }
+
+.bar-day { fill: var(--go); opacity: .55; }
+.bar-day--peak { opacity: .95; }
+.bar-base { stroke: var(--line-2); stroke-width: 1; }
+
+/* -------------------------------------------------------------- 14. Подвал */
+.colophon {
+  display: flex; justify-content: space-between; gap: 16px;
+  padding: 14px clamp(14px, 2.4vw, 28px) 22px;
+  border-top: var(--hair) solid var(--line);
+  font-family: var(--display); font-size: .62rem;
+  text-transform: uppercase; letter-spacing: .16em; color: var(--ink-3);
+}
+
+/* -------------------------------------------------------------- 15. Телефон */
+@media (max-width: 779px) {
+  :root { --pad: 14px; --gap: 10px; }
+
+  .masthead {
+    grid-template-columns: 1fr auto;
+    grid-template-areas: "brand headline" "corridor corridor";
+    gap: 6px 14px;
+    padding: 10px 14px;
+    position: static;
+  }
+  .brand    { grid-area: brand; }
+  .headline { grid-area: headline; }
+  .corridor { grid-area: corridor; flex-wrap: wrap; gap: 6px; }
+  .brand__tag { display: none; }
+  .headline__value { font-size: 1.15rem; }
+
+  .form__row--trio { grid-template-columns: 1fr 1fr; }
+  .form__row--trio .field:last-child { grid-column: 1 / -1; }
+
+  .rec__figures  { grid-template-columns: 1fr 1fr; }
+  .rec__figures .figure:nth-child(3) { grid-column: 1 / -1; border-left: 0; border-top: var(--hair) solid var(--line); }
+
+  .load__counters { grid-template-columns: 1fr; }
+  .counter { border-left: 0; border-top: var(--hair) solid var(--line); }
+  .counter:first-child { border-top: 0; }
+  .counter__value { font-size: 1.15rem; }
+
+  .load__clock { margin-left: 0; width: 100%; }
+  .offer__name, .offer__reason { max-width: none; }
+}
+
+/* -------------------------------------------------------------- 16. Движение */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+  }
+  .net-pulse { display: none; }
+}

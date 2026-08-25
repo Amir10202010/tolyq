@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TOLYQ — чем, как и когда везти</title>
+<meta name="description" content="Система принятия решений для грузоотправителей Казахстана: мультимодальный фронт Парето и оптимальная остановка.">
+
+<!-- Шрифты лежат рядом, в сеть приложение не ходит вообще. Взяты с Google
+     Fonts, оставлены кириллица и латиница: казахские Қ, Ғ, Ә, Ү живут в
+     подмножестве cyrillic-ext, без него названия ТОО в демо рассыплются.
+     Если папку assets/fonts удалить, сработает системный запасной набор
+     из styles.css и вёрстка не поедет. -->
+<link rel="stylesheet" href="assets/fonts/fonts.css">
+
+<link rel="stylesheet" href="styles.css">
+
+<!-- Иконка вкладки: силуэт вагона, вписан прямо в документ.
+     Никаких запросов в сеть и никакого 404 в консоли на защите. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230B1013'/%3E%3Crect x='4' y='9' width='24' height='12' fill='none' stroke='%2396A5AA' stroke-width='2'/%3E%3Crect x='6' y='11' width='13' height='8' fill='%2335B87E'/%3E%3Ccircle cx='10' cy='24' r='2.4' fill='%2396A5AA'/%3E%3Ccircle cx='22' cy='24' r='2.4' fill='%2396A5AA'/%3E%3C/svg%3E">
+</head>
+<body>
+
+<a class="skip" href="#pareto">К вариантам отправки</a>
+
+<!-- ================================================================
+     ШАПКА. Слева марка, в центре читаемая одной строкой заявка,
+     справа единственное число, ради которого всё считалось.
+     ================================================================ -->
+<header class="masthead">
+  <div class="brand">
+    <span class="brand__mark">TOLYQ</span>
+    <span class="brand__tag">чем, как и&nbsp;когда везти</span>
+  </div>
+
+  <p class="corridor" id="corridor">
+    <span class="corridor__leg" id="corridor-from">Астана</span>
+    <span class="corridor__arrow" aria-hidden="true">→</span>
+    <span class="corridor__leg" id="corridor-to">Алматы</span>
+    <span class="corridor__rest" id="corridor-rest">8 т · 52 м³ · продукты · срок 48 ч</span>
+  </p>
+
+  <div class="headline" id="headline">
+    <span class="headline__label">Экономия против фуры</span>
+    <span class="headline__value" id="headline-kzt">—</span>
+    <span class="headline__sub" id="headline-co2">—</span>
+  </div>
+</header>
+
+<main class="grid">
+
+  <!-- ==============================================================
+       ЗАЯВКА
+       ============================================================== -->
+  <section class="panel panel--request" aria-labelledby="h-request">
+    <header class="panel__head">
+      <h2 class="panel__title" id="h-request">Заявка</h2>
+      <span class="panel__meta" id="request-meta">пересчёт живой</span>
+    </header>
+
+    <form class="form" id="form" autocomplete="off">
+      <!-- Свободный ввод. Разбирает explain.js → parseRequest().
+           Не разобрал — просто ничего не происходит, форма ниже работает
+           как работала. Извинений и красных рамок здесь быть не должно. -->
+      <label class="field field--free" id="field-free">
+        <span class="field__label">Опишите груз своими словами</span>
+        <textarea class="control control--free" id="f-free" rows="2"
+                  placeholder="8 тонн продуктов из Астаны в Алматы, надо за двое суток"></textarea>
+      </label>
+
+      <div class="form__row form__row--pair">
+        <label class="field">
+          <span class="field__label">Откуда</span>
+          <select class="control" id="f-from" name="from"></select>
+        </label>
+        <label class="field">
+          <span class="field__label">Куда</span>
+          <select class="control" id="f-to" name="to"></select>
+        </label>
+      </div>
+
+      <div class="form__row form__row--trio">
+        <label class="field">
+          <span class="field__label">Тонны</span>
+          <input class="control control--num" id="f-tons" name="tons" type="number" min="0.5" max="68" step="0.5" value="8">
+        </label>
+        <label class="field">
+          <span class="field__label">Объём, м³</span>
+          <input class="control control--num" id="f-volume" name="volumeM3" type="number" min="1" max="138" step="1" value="52">
+        </label>
+        <label class="field">
+          <span class="field__label">Срок, ч</span>
+          <input class="control control--num" id="f-deadline" name="deadlineH" type="number" min="6" max="240" step="1" value="48">
+        </label>
+      </div>
+
+      <fieldset class="field field--cargo">
+        <legend class="field__label">Тип груза</legend>
+        <div class="segmented" id="f-cargo" role="radiogroup" aria-label="Тип груза"></div>
+      </fieldset>
+
+      <!-- Ползунки приоритетов. Сумма всегда 100 %: двигаешь один,
+           два других расходятся пропорционально. -->
+      <fieldset class="weights" id="weights">
+        <legend class="field__label">
+          Что важнее
+          <span class="weights__hint">сумма 100 %</span>
+        </legend>
+
+        <label class="weight" data-key="cost">
+          <span class="weight__name">Деньги</span>
+          <input class="weight__input" type="range" min="0" max="100" step="1" value="50"
+                 id="w-cost" aria-label="Приоритет: деньги">
+          <output class="weight__value" for="w-cost">50<span class="unit">%</span></output>
+        </label>
+
+        <label class="weight" data-key="time">
+          <span class="weight__name">Время</span>
+          <input class="weight__input" type="range" min="0" max="100" step="1" value="30"
+                 id="w-time" aria-label="Приоритет: время">
+          <output class="weight__value" for="w-time">30<span class="unit">%</span></output>
+        </label>
+
+        <label class="weight" data-key="co2">
+          <span class="weight__name">Экология</span>
+          <input class="weight__input" type="range" min="0" max="100" step="1" value="20"
+                 id="w-co2" aria-label="Приоритет: экология">
+          <output class="weight__value" for="w-co2">20<span class="unit">%</span></output>
+        </label>
+      </fieldset>
+
+      <button class="reset" type="button" id="f-reset">Вернуть демо-сценарий</button>
+    </form>
+  </section>
+
+  <!-- ==============================================================
+       РЕКОМЕНДАЦИЯ
+       ============================================================== -->
+  <section class="panel panel--recommend" aria-labelledby="h-recommend" aria-live="polite">
+    <header class="panel__head">
+      <h2 class="panel__title" id="h-recommend">Рекомендация</h2>
+      <span class="panel__meta" id="recommend-meta"></span>
+    </header>
+    <div class="panel__body" id="recommend-body"></div>
+  </section>
+
+  <!-- ==============================================================
+       ФРОНТ ПАРЕТО
+       ============================================================== -->
+  <section class="panel panel--pareto" id="pareto" aria-labelledby="h-pareto">
+    <header class="panel__head">
+      <h2 class="panel__title" id="h-pareto">Фронт Парето</h2>
+      <span class="panel__meta" id="pareto-meta"></span>
+    </header>
+    <div class="panel__body panel__body--chart">
+      <div class="chart" id="pareto-chart"></div>
+      <div class="tip" id="pareto-tip" hidden></div>
+    </div>
+    <footer class="panel__note">
+      По горизонтали — срок, по вертикали — деньги, размер точки — выбросы.
+      Бледные точки движок перебрал и отбросил: каждая хуже какой-то яркой сразу по всем трём.
+    </footer>
+  </section>
+
+  <!-- ==============================================================
+       СЕТЬ
+       ============================================================== -->
+  <section class="panel panel--network" id="network" aria-labelledby="h-network">
+    <header class="panel__head">
+      <h2 class="panel__title" id="h-network">Сеть</h2>
+      <span class="panel__meta" id="network-meta"></span>
+    </header>
+    <div class="panel__body panel__body--chart">
+      <div class="chart" id="network-chart"></div>
+    </div>
+    <footer class="panel__note" id="network-note">
+      Сплошные линии — железная дорога, штриховые — автодороги.
+      Наведите на точку фронта, чтобы увидеть её маршрут.
+    </footer>
+  </section>
+
+  <!-- ==============================================================
+       СБОРКА ВАГОНА
+       ============================================================== -->
+  <section class="panel panel--loadbar" id="loadbar" aria-labelledby="h-loadbar">
+    <header class="panel__head">
+      <h2 class="panel__title" id="h-loadbar">Сборка вагона</h2>
+      <span class="panel__meta" id="loadbar-meta"></span>
+    </header>
+    <div class="panel__body" id="loadbar-body"></div>
+  </section>
+
+  <!-- ==============================================================
+       КОГДА ОТПРАВЛЯТЬ
+       ============================================================== -->
+  <section class="panel panel--stopping" id="stopping" aria-labelledby="h-stopping">
+    <header class="panel__head">
+      <h2 class="panel__title" id="h-stopping">Когда отправлять</h2>
+      <span class="panel__meta" id="stopping-meta"></span>
+    </header>
+    <div class="panel__body" id="stopping-body"></div>
+    <footer class="panel__note model-note" id="model-note"></footer>
+  </section>
+
+  <!-- ==============================================================
+       30 ДНЕЙ
+       ============================================================== -->
+  <section class="panel panel--month" id="month" aria-labelledby="h-month">
+    <header class="panel__head">
+      <h2 class="panel__title" id="h-month">Тридцать дней коридора</h2>
+      <span class="panel__meta" id="month-meta"></span>
+    </header>
+    <div class="panel__body" id="month-body"></div>
+  </section>
+
+</main>
+
+<footer class="colophon">
+  <span>TOLYQ</span>
+  <span id="colophon-source">данные: демонстрационный сценарий</span>
+</footer>
+
+<script type="module" src="src/ui/app.js"></script>
+</body>
+</html>
